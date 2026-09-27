@@ -78,6 +78,7 @@ game data or screenshots in this repository). Yabause 0.9.15.
 | Title | Result | Notes |
 |---|---|---|
 | Virtua Cop (JP) | Boots, attract mode runs | Needed the slave start path, CD "disc changed" fix, and loading over the IP.BIN tail |
+| Panzer Dragoon (JP) | Boots, intro movie plays (streamed from CD) | No changes needed |
 
 ## Test loop
 | Target | Custom BIOS accepted? | Notes |
