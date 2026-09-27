@@ -152,6 +152,14 @@ disassembled.
   file after two 64-sector requests, the drive stuck in SEEK (CD_ERR
   02000400, buffer empty). cd_read now waits for the drive to be idle
   (PAUSE/STANDBY/PLAY) before every Play request.
+- Thirteenth MiSTer run: Panzer Dragoon's drive then stayed in SEEK for
+  30 s at that request boundary (CD_ERR 05000400). Reads are now one Play
+  request per file (the CD block pauses the drive while its buffer is full
+  and resumes as sectors are taken); before a retry the BIOS waits up to
+  3 s for the drive to be idle and then sends Play anyway. Also: Sonic R had
+  no CD audio on MiSTer. scsp_init had cleared the CD audio mix and left
+  master volume 0; it now sets MVOL 15 and routes CD audio left/right
+  through slots 16/17 (EFSDL 7, panned hard left/right).
 - Debug tools: fatal exceptions (vectors 4/6/9/10) show a crash screen with
   vector, PC, SR, PR, SP and the 32 bytes around PC; `make diag` builds a diagnostics BIOS
   (`src/diag.s`) that counts system calls, samples the game's PC on VBlank,
@@ -179,8 +187,9 @@ Fixes found this way:
 - ICR VECMD = 1 on the master: the SCU supplies interrupt vectors. With 0,
   Kronos uses auto-vectors and never acknowledges the SCU, so no game gets
   its VBlank and the CPU drowns in interrupts.
-- Reads are Play requests of up to 64 sectors, retried for any missing
-  sectors, with time-based limits; each sector's FAD is checked.
+- Reads are one Play request per file, retried for any missing sectors,
+  with time-based limits; each sector's FAD is checked; DRDY and EHST are
+  cleared before and awaited after each transfer.
 
 ## Test loop
 | Target | Custom BIOS accepted? | Notes |

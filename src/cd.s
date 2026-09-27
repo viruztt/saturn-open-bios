@@ -59,7 +59,6 @@
         .equ    CD_FAD,     CD_VARS + 0x1C8 ! next FAD the last cd_read wanted
         .equ    CD_LEFT,    CD_VARS + 0x1CC ! sectors it still had to read
         .equ    CD_CHUNK,   CD_VARS + 0x1D0 ! sectors left in the current Play
-        .equ    CHUNK,      64              ! sectors per Play request
         .equ    CD_WMODE,   CD_VARS + 0x1D8 ! data port reads: 0 = 32-bit, 1 = 16-bit
         .equ    CD_RAW0,    0x26000F40      ! first 16 bytes of FAD 150, first try
         .equ    CD_LAST16,  0x26000F50      ! first 16 bytes of the last sector read
@@ -158,11 +157,20 @@ cd_auth:
 ! STANDBY or PLAY (spun up and idle), for up to READY_FRAMES. A tray that is
 ! open or a missing disc simply never gets there. Returns r0 = 0, or 1 with
 ! CD_ERR = 05xxxxxx (last CR1: status in the high byte).
+! cd_ready_quiet: the same for r5 frames, without recording an error.
         .align  2
 cd_ready:
+        mov.l   c_ready_frames_e, r5
+        bra     cd_ready_n
+        mov     #1, r6
+cd_ready_quiet:
+        mov     #0, r6
+cd_ready_n:
         sts.l   pr, @-r15
         mov.l   r8, @-r15
-        mov.l   c_ready_frames_e, r8
+        mov.l   r9, @-r15
+        mov     r5, r8                  ! r8 = frames
+        mov     r6, r9                  ! r9 = record an error on timeout?
 1:      mova    cmd_status_e, r0
         bsr     cd_cmdt
         mov     r0, r4
@@ -182,6 +190,8 @@ cd_ready:
         nop
         dt      r8
         bf      1b
+        tst     r9, r9
+        bt      7f
         mov.l   c_cd_resp_e, r1           ! give up: record the drive status
         mov.w   @r1, r0
         extu.w  r0, r0
@@ -189,10 +199,11 @@ cd_ready:
         or      r1, r0
         mov.l   c_cd_err_e, r1
         mov.l   r0, @r1
-        bra     9f
+7:      bra     9f
         mov     #1, r0
 8:      mov     #0, r0
-9:      mov.l   @r15+, r8
+9:      mov.l   @r15+, r9
+        mov.l   @r15+, r8
         lds.l   @r15+, pr
         rts
         nop
@@ -385,6 +396,14 @@ read_fad150:
         .align  2
 sega_id15:      .ascii  "SEGA SEGASATURN"
 
+! cd_read: r4 = start FAD, r5 = sector count, r6 = destination (4-byte
+! aligned, use a cache-through address), r7 = bytes to store. Reads 2048-byte
+! sectors through buffer partition 0 with one Play request and stores the
+! first r7 bytes; the rest of the last sector is drained and dropped. Each
+! buffered sector's FAD is checked (read-ahead from earlier requests is
+! dropped). If no sector arrives for a while, Play is issued again for the
+! sectors still missing (up to 3 times). CD_FAD / CD_LEFT track the next FAD
+! and the sectors left. Returns r0 = 0, or 1 on error (see CD_ERR).
         .align  2
 cd_read:
         sts.l   pr, @-r15
@@ -406,10 +425,10 @@ cd_read:
         mov     r0, r4
         tst     r0, r0
         bf      8f
-0:      bsr     cd_ready                ! drive idle (not busy / seeking)
-        nop                             ! before a new Play request
-        tst     r0, r0
-        bf      8f
+0:      mov.l   c_idle_frames, r5       ! give the drive up to 3 s to be idle
+        bsr     cd_ready_quiet          ! (not busy / seeking), then send Play
+        nop                             ! anyway: a new Play is also what gets
+                                        ! a drive stuck in SEEK going again
         mova    cmd_resetsel, r0        ! empty buffer partition 0
         bsr     cd_cmdt
         mov     r0, r4
@@ -631,19 +650,16 @@ cd_read:
         rts
         nop
 
-! cd_play_rest: Play min(CD_LEFT, CHUNK) sectors starting at CD_FAD (FAD
-! mode) and set CD_CHUNK to that count. Returns cd_cmd's r0.
+! cd_play_rest: Play the CD_LEFT sectors starting at CD_FAD (FAD mode) as one
+! request and set CD_CHUNK to that count. The CD block pauses the drive when
+! its buffer is full and resumes as sectors are taken. Returns cd_cmd's r0.
         .align  2
 cd_play_rest:
         mov.l   c_cd_fad, r1
         mov.l   @r1, r2                 ! r2 = FAD
         mov.l   c_cd_left, r1
         mov.l   @r1, r3                 ! r3 = count
-        mov     #CHUNK, r0
-        cmp/hi  r0, r3
-        bf      1f
-        mov     r0, r3
-1:      mov.l   c_cd_chunk, r1
+        mov.l   c_cd_chunk, r1
         mov.l   r3, @r1
         mov     r2, r0                  ! CR1 = 0x10 | FAD flag | FAD[22:16]
         shlr16  r0
@@ -788,6 +804,7 @@ c_cd_err:       .long   CD_ERR
 c_cd_fad:       .long   CD_FAD
 c_cd_left:      .long   CD_LEFT
 c_cd_chunk:     .long   CD_CHUNK
+c_idle_frames:  .long   3 * 60
 c_err_nocmok:   .long   0x01000000
 c_err_nosector: .long   0x02000000
 c_err_nohirq:   .long   0x03000000

@@ -240,8 +240,9 @@ scu_init:
         bra     poke_l
         nop
 
-! scsp_init: silence the sound chip. The 68000 is already held in reset by
-! smpc_init, so sound RAM can be cleared from here.
+! scsp_init: silence the sound chip (all slots keyed off) and route CD audio
+! to the outputs at full level, as games expect after the BIOS. The 68000 is
+! already held in reset by smpc_init, so sound RAM can be cleared from here.
         .align  2
 scsp_init:
         mov     #0, r0
@@ -375,7 +376,12 @@ scu_tab:
         .align  2
 scsp_tab:
         .long   SCSP + 0x000, 0x1000    ! KYONEX: apply key-off to all slots
-        .long   SCSP + 0x400, 0x0200    ! MEM4MB (512 KB sound RAM), MVOL 0
+        .long   SCSP + 0x216, 0x00EF    ! slot 16 = CD audio left: EFSDL 7,
+        .long   SCSP + 0x236, 0x00FF    ! slot 17 = CD audio right: EFSDL 7,
+                                        ! panned hard left / right, so CD
+                                        ! audio plays for games that do not
+                                        ! set up the mixer themselves
+        .long   SCSP + 0x400, 0x020F    ! MEM4MB (512 KB sound RAM), MVOL 15
         .long   SCSP + 0x41E, 0         ! SCIEB: 68000 interrupts off
         .long   SCSP + 0x422, 0x07FF    ! SCIRE: ack all
         .long   SCSP + 0x42A, 0         ! MCIEB: main CPU interrupts off
