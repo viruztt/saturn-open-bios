@@ -6,8 +6,12 @@
 !     wrappers that then jump to the real service),
 !   - VBlank-IN interrupts that pass through the dispatcher, with the PC, PR
 !     and SR the game was interrupted at and the last 8 PCs kept in a ring,
-!   - how many times the slave SH-2 was started.
-! After DIAG_VBLANKS VBlank interrupts it takes over the screen and shows the
+!   - how many times the slave SH-2 was started,
+!   - a watchdog timer tick (interval mode, priority 15, every ~73 ms) started
+!     at the hand-over, which samples the PC the same way even when the game
+!     never enables VBlank interrupts.
+! After DIAG_VBLANKS VBlank interrupts or DIAG_TICKS watchdog ticks (both
+! about 15 s) it takes over the screen and shows the
 ! numbers: page 1 (calls), then about 5 s later page 2 (PCs and a snapshot
 ! of CD block, SCU, SMPC and VDP status). Variables live at 0x06000C80..
 
@@ -16,6 +20,7 @@
         .ifdef  DIAG
 
         .global diag_irq
+        .global diag_start_wdt
         .global DIAG_SLAVE
 
         .equ    DIAG,       0x26000C80      ! variables, cache-through
@@ -25,6 +30,9 @@
         .equ    DIAG_SR,    DIAG + 0x0C     ! last interrupted SR
         .equ    DIAG_SLAVE, DIAG + 0x10     ! slave SH-2 starts
         .equ    DIAG_RINGI, DIAG + 0x14     ! next PC ring slot (0-7)
+        .equ    DIAG_TICKS, DIAG + 0x18     ! watchdog ticks
+        .equ    DIAG_TICKLIM, 205           ! ~15 s of 73 ms ticks
+        .equ    WDT_VECTOR, 0x68            ! as set in VCRWDT by cpu_vectors
         .equ    DIAG_CALLS, DIAG + 0x20     ! one longword per system call
         .equ    DIAG_RING,  DIAG + 0x60     ! last 8 VBlank PCs
         .equ    DIAG_VBLANKS, 900           ! about 15 s at 60 Hz
@@ -71,6 +79,23 @@ diag_w_\service:
 diag_irq:
         cmp/eq  #0x40, r0               ! VBlank-IN only
         bf      9f
+        sts.l   pr, @-r15
+        bsr     sample
+        nop
+        lds.l   @r15+, pr
+        mov.l   c_diag, r0
+        mov.l   @r0, r1
+        add     #1, r1
+        mov.l   r1, @r0
+        mov.w   c_limit, r2
+        cmp/hs  r2, r1
+        bt      report
+9:      rts
+        nop
+
+! sample: r1 = PC, r2 = SR, r3 = PR of the interrupted code: keep them and
+! add the PC to the ring. Clobbers r0-r3.
+sample:
         mov.l   c_diag, r0
         mov.l   r1, @(4, r0)
         mov.l   r3, @(8, r0)
@@ -84,15 +109,72 @@ diag_irq:
         add     #1, r2
         mov     #7, r3
         and     r3, r2
+        rts
         mov.l   r2, @(20, r0)
-        mov.l   @r0, r1
+
+! diag_start_wdt: start the watchdog in interval mode (clock / 8192, about
+! 73 ms per overflow at 28.6 MHz) at interrupt priority 15, with its master
+! vector pointing at diag_wdt. Called at the hand-over. Clobbers r0, r1.
+diag_start_wdt:
+        mov.l   c_wdt_vec, r1           ! VBR table entry for vector 0x68
+        mov.l   p_diag_wdt, r0
+        mov.l   r0, @r1
+        mov.l   c_ipra, r1              ! IPRA: WDT priority 15
+        mov.w   @r1, r0
+        or      #0xF0, r0
+        mov.w   r0, @r1
+        mov.l   c_wtcsr, r1
+        mov.w   c_wtcnt0, r0            ! WTCNT = 0
+        mov.w   r0, @r1
+        mov.w   c_wtcsr_go, r0          ! interval mode, timer on, clock/8192
+        rts
+        mov.w   r0, @r1
+
+! diag_wdt: watchdog interval interrupt. Clears the overflow flag, samples
+! the interrupted PC/SR/PR, counts ticks, and shows the report after
+! DIAG_TICKLIM ticks.
+        .align  2
+diag_wdt:
+        mov.l   r0, @-r15
+        mov.l   r1, @-r15
+        mov.l   r2, @-r15
+        mov.l   r3, @-r15
+        sts.l   pr, @-r15               ! stack: pr r3 r2 r1 r0 PC SR
+        mov.l   c_wtcsr, r1             ! clear OVF: write back without bit 7
+        mov.b   @r1, r0
+        and     #0x7F, r0
+        mov.w   c_wtcsr_key, r2
+        or      r2, r0
+        mov.w   r0, @r1
+        mov.l   @(20, r15), r1          ! PC
+        mov.l   @(24, r15), r2          ! SR
+        mov.l   @r15, r3                ! PR of the interrupted code
+        bsr     sample
+        nop
+        mov.l   c_diag, r0
+        mov.l   @(24, r0), r1           ! ticks
         add     #1, r1
-        mov.l   r1, @r0
-        mov.w   c_limit, r2
+        mov.l   r1, @(24, r0)
+        mov.w   c_ticklim, r2
         cmp/hs  r2, r1
         bt      report
-9:      rts
+        lds.l   @r15+, pr
+        mov.l   @r15+, r3
+        mov.l   @r15+, r2
+        mov.l   @r15+, r1
+        mov.l   @r15+, r0
+        rte
         nop
+
+        .align  2
+c_wdt_vec:      .long   0x06000000 + WDT_VECTOR * 4
+p_diag_wdt:     .long   diag_wdt
+c_ipra:         .long   0xFFFFFEE2
+c_wtcsr:        .long   0xFFFFFE80
+c_wtcnt0:       .word   0x5A00
+c_wtcsr_go:     .word   0xA53F          ! TME, interval, CKS = 7
+c_wtcsr_key:    .word   0xA500
+c_ticklim:      .word   DIAG_TICKLIM
 
 report:
         mov     #0xF0, r0
@@ -232,6 +314,7 @@ rows:
         .long   r_pr,   DIAG_PR
         .long   r_sr,   DIAG_SR
         .long   r_slv,  DIAG_SLAVE
+        .long   r_tick, DIAG_TICKS
         .long   r_c0,   DIAG_CALLS + 0 * 4
         .long   r_c1,   DIAG_CALLS + 1 * 4
         .long   r_c2,   DIAG_CALLS + 2 * 4
@@ -290,6 +373,8 @@ r_pc:           .asciz  "  last PC"
 r_pr:           .asciz  "  last PR"
         .align  2
 r_sr:           .asciz  "  last SR"
+        .align  2
+r_tick:         .asciz  "Watchdog ticks"
         .align  2
 r_slv:          .asciz  "Slave starts"
         .align  2

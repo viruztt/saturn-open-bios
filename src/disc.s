@@ -244,7 +244,13 @@ boot_game:
         tst     r15, r15
         bf      1f
         mov.l   c_def_stack, r15
-1:      mov.l   c_ccr, r1               ! purge the cache: code was loaded
+1:
+        .ifdef  DIAG                    ! diagnostics: watchdog PC sampling
+        mov.l   p_diag_start_wdt, r0
+        jsr     @r0
+        nop
+        .endif
+        mov.l   c_ccr, r1               ! purge the cache: code was loaded
         mov     #0x10, r0               ! through cache-through addresses
         mov.b   r0, @r1
         mov     #0x01, r0
@@ -294,6 +300,9 @@ c_def_stack:    .long   0x06002000
 c_entry:        .long   ENTRY
 c_ccr:          .long   0xFFFFFE92
 p_cd_read:      .long   cd_read
+        .ifdef  DIAG
+p_diag_start_wdt: .long diag_start_wdt
+        .endif
 c_ip_max:       .long   IP_MAX          ! .long: 0x8000 would sign-extend as a word
 c_ip_min:       .word   IP_MIN
 c_2047:         .word   2047
