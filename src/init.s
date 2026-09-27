@@ -349,6 +349,10 @@ c_slot_words:   .word   0x400 / 2
 
         .align  2
 cpu_tab:
+        .long   0xFFFFFEE0, 0x0001      ! ICR: VECMD = 1, take interrupt vector
+                                        ! numbers from the SCU (external vector
+                                        ! mode); with 0 the CPU would use
+                                        ! auto-vectors and never ack the SCU
         .long   0xFFFFFEE2, 0           ! IPRA: DIVU/DMAC/WDT priority 0
         .long   0xFFFFFE60, 0           ! IPRB: SCI/FRT priority 0
         .long   0

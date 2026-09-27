@@ -62,7 +62,7 @@ c_master_bit:   .word   0x8000
         mova    msg_title, r0
         mov     r0, r4
         mov     #2, r5
-        mov     #1, r6
+        mov     #0, r6
         mov.l   p_con_puts, r0
         jsr     @r0
         nop
@@ -72,7 +72,7 @@ c_master_bit:   .word   0x8000
         ! r8 = step table, r9 = screen row, r10 = nonzero once a step failed
         mova    steps, r0
         mov     r0, r8
-        mov     #3, r9
+        mov     #2, r9
         mov     #0, r10
 step:
         mov.l   @r8+, r4
@@ -203,9 +203,10 @@ steps:
 
         .align  2
 readouts:
-        .long   msg_cst,  CD_STAT, 1        ! CD status report CR1:CR2
         .long   msg_cau,  CD_AUTH, 0        ! CD authentication status
-        .long   msg_tlo,  CD_TOC + 101*4, 1 ! TOC lead-out
+        .long   msg_cerr, CD_ERR, 1         ! last CD failure (0 = none)
+        .long   msg_cfad, CD_FAD, 1         ! last CD read: next FAD
+        .long   msg_cleft, CD_LEFT, 1       !   and sectors still to read
         .long   msg_ip,   CD_HDR, 2         ! first 16 bytes of IP.BIN
         .long   msg_area, IP_AREA, 2        ! area symbols (shown, not enforced)
         .long   msg_fra,  FR_ADDR, 1        ! first read file: load address
@@ -243,11 +244,13 @@ msg_cdt:        .asciz  "CD read TOC"
         .align  2
 msg_cdr:        .asciz  "CD read FAD 150"
         .align  2
-msg_cst:        .asciz  "CD status"
+msg_cerr:       .asciz  "CD error"
+        .align  2
+msg_cfad:       .asciz  "CD next FAD"
+        .align  2
+msg_cleft:      .asciz  "  sectors left"
         .align  2
 msg_cau:        .asciz  "CD auth"
-        .align  2
-msg_tlo:        .asciz  "TOC lead-out"
         .align  2
 msg_ip:         .asciz  "IP.BIN"
         .align  2

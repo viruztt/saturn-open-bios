@@ -65,6 +65,9 @@ disassembled.
   0x06000250) instead of re-initialising the machine under the game; the CD
   block is left without the "disc changed" state (Get Hardware Info at boot);
   first read files may load over the tail of IP.BIN.
+- Boot screen readouts include the last CD error code (01 = no CMOK for a
+  command, 02 = no sector arrived, 03 = HIRQ bit never set), the next FAD
+  and sectors left of the last read.
 - Debug tools: fatal exceptions (vectors 4/6/9/10) show a crash screen with
   vector, PC, SR, PR and SP; `make diag` builds a diagnostics BIOS
   (`src/diag.s`) that counts system calls, samples the game's PC on VBlank,
@@ -73,12 +76,26 @@ disassembled.
 
 ## Compatibility
 Tested with the owner's own disc dumps, read in place (never copied, and no
-game data or screenshots in this repository). Yabause 0.9.15.
+game data or screenshots in this repository). Kronos 2.7 (libretro core in
+RetroArch on Windows) is the main reference; Yabause 0.9.15 (WSL, headless)
+is the quick automated check.
 
-| Title | Result | Notes |
-|---|---|---|
-| Virtua Cop (JP) | Boots, attract mode runs | Needed the slave start path, CD "disc changed" fix, and loading over the IP.BIN tail |
-| Panzer Dragoon (JP) | Boots, intro movie plays (streamed from CD) | No changes needed |
+| Title | Kronos | Yabause 0.9.15 | Notes |
+|---|---|---|---|
+| Virtua Cop (JP) | Boots, attract mode | Boots, attract mode | |
+| Panzer Dragoon (JP) | Boots, intro plays | Boots, intro movie plays | |
+| The House of the Dead (JP) | Boots to title screen | Crashes (jumps into VDP1 RAM) | Also fails with Yabause's own HLE BIOS: emulator limit |
+
+Fixes found this way:
+- Slave SH-2 start path (it starts at the reset vector too).
+- CD block left without the "disc changed" state.
+- First read file may load over the tail of IP.BIN.
+- ICR VECMD = 1 on the master: the SCU supplies interrupt vectors. With 0,
+  Kronos uses auto-vectors and never acknowledges the SCU, so no game gets
+  its VBlank and the CPU drowns in interrupts.
+- First read file loaded with the CD block's Read File command (Change
+  Directory to the root, file ID 2); reads are retried with Play for any
+  missing sectors, in 64-sector requests, with time-based limits.
 
 ## Test loop
 | Target | Custom BIOS accepted? | Notes |
