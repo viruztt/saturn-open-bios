@@ -146,6 +146,12 @@ disassembled.
   Yabause do not). Services now write the variables games read (0x06000354,
   0x06000348, 0x06000324, the SCU handler table at 0x06000900) through their
   cached addresses; the caches are write-through, so memory stays right.
+- Twelfth MiSTer run: Sonic R (EU), Clockwork Knight and Die Hard Arcade
+  run; House of the Dead, Virtua Cop, Virtua Cop 2 and Shutsudo! Minisuka
+  Police show a black screen; Panzer Dragoon failed loading its first read
+  file after two 64-sector requests, the drive stuck in SEEK (CD_ERR
+  02000400, buffer empty). cd_read now waits for the drive to be idle
+  (PAUSE/STANDBY/PLAY) before every Play request.
 - Debug tools: fatal exceptions (vectors 4/6/9/10) show a crash screen with
   vector, PC, SR, PR, SP and the 32 bytes around PC; `make diag` builds a diagnostics BIOS
   (`src/diag.s`) that counts system calls, samples the game's PC on VBlank,

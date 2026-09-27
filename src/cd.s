@@ -406,7 +406,11 @@ cd_read:
         mov     r0, r4
         tst     r0, r0
         bf      8f
-0:      mova    cmd_resetsel, r0        ! empty buffer partition 0
+0:      bsr     cd_ready                ! drive idle (not busy / seeking)
+        nop                             ! before a new Play request
+        tst     r0, r0
+        bf      8f
+        mova    cmd_resetsel, r0        ! empty buffer partition 0
         bsr     cd_cmdt
         mov     r0, r4
         tst     r0, r0
