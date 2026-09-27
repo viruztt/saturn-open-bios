@@ -111,6 +111,13 @@ disassembled.
   0x06002E08, registers as handed over). IP.BIN past its first sector is
   probably not what the disc holds. The crash screen now also dumps the 32
   bytes around PC to show what is in memory there.
+- Seventh MiSTer run (Sonic R EU, IP size 0x1800): the dump at 0x06002DF0
+  showed a repeating 16-byte pattern, not IP.BIN's second sector (FAD 151).
+  For the bring-up the BIOS now shows a "Hand-over check" page for 5 s
+  before starting the game: 16 bytes at IP.BIN +0000/+0800/+0E00/+1000 and
+  at the first read address, and the CD sector checks (Get Sector Info
+  rejected count, sectors dropped for a wrong FAD). Remove once MiSTer
+  boots games.
 - Debug tools: fatal exceptions (vectors 4/6/9/10) show a crash screen with
   vector, PC, SR, PR, SP and the 32 bytes around PC; `make diag` builds a diagnostics BIOS
   (`src/diag.s`) that counts system calls, samples the game's PC on VBlank,

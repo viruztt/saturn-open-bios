@@ -27,6 +27,9 @@
         .global CD_LEFT
         .global CD_RAW0
         .global CD_LAST16
+        .global CD_SIREJ
+        .global CD_DROPPED
+        .global vbl_wait
 
         .equ    CD_HIRQ,    0x25890008
         .equ    CD_CR1,     0x25890018      ! CR2..CR4 follow at +4, +8, +12
@@ -59,6 +62,8 @@
         .equ    CD_WMODE,   CD_VARS + 0x1D8 ! data port reads: 0 = 32-bit, 1 = 16-bit
         .equ    CD_RAW0,    CD_VARS + 0x1E0 ! first 16 bytes of FAD 150, first try
         .equ    CD_LAST16,  CD_VARS + 0x1F0 ! first 16 bytes of the last sector read
+        .equ    CD_SIREJ,   CD_VARS + 0x1C0 ! Get Sector Info answers rejected
+        .equ    CD_DROPPED, CD_VARS + 0x1D4 ! sectors dropped (wrong FAD)
         .equ    IP_BUF,     0x26002000      ! IP.BIN goes to 0x06002000
 
 ! cd_init: reset the CD block software state, read the hardware info (which
@@ -460,7 +465,13 @@ cd_read:
         shlr8   r3
         not     r3, r0                  ! status 0xFF (rejected): cannot tell,
         tst     #0xFF, r0               ! take the sector as it is
-        bt      7f
+        bf      17f
+        mov.l   c_cd_sirej, r1          ! (count those)
+        mov.l   @r1, r0
+        add     #1, r0
+        bra     7f
+        mov.l   r0, @r1
+17:     mov.l   c_cd_resp, r1
         mov.w   @r1, r0
         and     #0xFF, r0
         shll16  r0
@@ -472,8 +483,12 @@ cd_read:
         mov.l   @r1, r0
         cmp/eq  r0, r3
         bt      7f
-        mova    cmd_delsec, r0          ! not the one we want (e.g. read-ahead
-        bsr     cd_cmdt                 ! from an earlier request): drop it
+        mov.l   c_cd_dropped, r1        ! not the one we want (e.g. read-ahead
+        mov.l   @r1, r0                 ! from an earlier request): drop it
+        add     #1, r0
+        mov.l   r0, @r1
+        mova    cmd_delsec, r0
+        bsr     cd_cmdt
         mov     r0, r4
         tst     r0, r0
         bf      8f
@@ -750,6 +765,8 @@ c_sector_words_l: .long 2048 / 2
 c_cd_wmode:     .long   CD_WMODE
 c_cd_raw0:      .long   CD_RAW0
 c_cd_last16:    .long   CD_LAST16
+c_cd_sirej:     .long   CD_SIREJ
+c_cd_dropped:   .long   CD_DROPPED
 c_toc_words_l:  .long   0xCC
 c_fad150_l:     .long   150
 c_sector_bytes_l: .long 2048
