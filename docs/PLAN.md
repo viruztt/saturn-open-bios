@@ -137,6 +137,15 @@ disassembled.
   End Data Transfer a real CD block deletes the sectors and signals EHST;
   the next command must wait for that. The BIOS now clears EHST before End
   Data Transfer and waits for it afterwards.
+- Eleventh MiSTer run: all of IP.BIN and the first read file correct; the
+  BIOS hands over and Sonic R runs, then calls BUP_Stat through
+  *(0x06000354) + 12 and lands at 0x06002000: it read 0 from 0x06000354
+  although BUP_Init had stored the work area there. BUP_Init wrote through
+  the cache-through alias; the game reads the cached address, and its cache
+  still held the old line (MiSTer emulates the SH-2 cache, Kronos and
+  Yabause do not). Services now write the variables games read (0x06000354,
+  0x06000348, 0x06000324, the SCU handler table at 0x06000900) through their
+  cached addresses; the caches are write-through, so memory stays right.
 - Debug tools: fatal exceptions (vectors 4/6/9/10) show a crash screen with
   vector, PC, SR, PR, SP and the 32 bytes around PC; `make diag` builds a diagnostics BIOS
   (`src/diag.s`) that counts system calls, samples the game's PC on VBlank,

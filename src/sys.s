@@ -43,8 +43,11 @@
         .equ    USER_TAB,   SYS + 0xA00     ! = 0x06000900 + 4 * 0x40
         .equ    SEMAPHORES, SYS + 0xB00
         .equ    PRIO_TAB,   SYS + 0xC00
-        .equ    MASK_SHADOW, SYS + 0x348
-        .equ    CLOCK_MODE, SYS + 0x324
+        ! Variables that services change while a game runs are accessed through
+        ! their cached addresses: the game reads them cached, and a write via
+        ! the cache-through alias would leave a stale copy in its cache.
+        .equ    MASK_SHADOW, 0x06000348
+        .equ    CLOCK_MODE, 0x06000324
         .equ    SCU_IMS,    0x25FE00A0
         .equ    SCU_IST,    0x25FE00A4
         .equ    SCU_AIACK,  0x25FE00A8
@@ -154,7 +157,7 @@ sc_set_scu_int:
         bf      1f
         mov.l   c_rts_stub, r5
 1:      shll2   r4
-        mov.l   c_user_base, r0         ! 0x06000900 (cache-through)
+        mov.l   c_user_base, r0         ! 0x06000900
         add     r0, r4
         rts
         mov.l   r5, @r4
@@ -412,7 +415,7 @@ c_rte_stub:     .long   RTE_STUB
 c_crash:        .long   crash_entries
 c_entries:      .long   scu_entries
 c_user_tab:     .long   USER_TAB
-c_user_base:    .long   SYS + 0x900
+c_user_base:    .long   0x06000900      ! cached, see MASK_SHADOW
 c_prio_tab:     .long   PRIO_TAB
 c_semaphores:   .long   SEMAPHORES
 c_mask_shadow:  .long   MASK_SHADOW

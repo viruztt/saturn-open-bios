@@ -34,7 +34,11 @@
 
         .equ    BUP1,       0x20180001      ! data byte 0 of block 0, cache-through
         .equ    NBLOCKS,    512
-        .equ    WORK_PTR,   0x26000354      ! system variable: BUP work area
+        ! System variable: BUP work area. Written through the cached address:
+        ! the game reads it cached, and a write through the cache-through
+        ! alias would leave a stale copy in the game's cache (SH-2 caches
+        ! are write-through, so memory is right either way).
+        .equ    WORK_PTR,   0x06000354
         ! Work area (given by the game, 8 KB in SBL): function table at +0,
         ! block list (u16 x 512) at +0x40, used-block map (u8 x 512) at +0x440
         .equ    W_LIST,     0x40
