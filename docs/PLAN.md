@@ -66,7 +66,7 @@ disassembled.
 - Public docs: Sega Saturn hardware manuals (SCU, VDP1, VDP2, SMPC, SCSP),
   "Disc Format Standards Specification", CD block notes by Charles MacDonald.
 
-## Open decisions
-- Licence: default GPL-2.0-or-later, so Yabause's HLE code can be reused if
-  useful. MIT is the alternative if we want maximum reuse in other projects.
-- Where the code lives: needs a GitHub repository from the owner.
+## Decisions
+- Licence: GPL-2.0-or-later (owner, 2026-09-27). Yabause HLE code may be reused
+  with attribution.
+- Code lives in a local git repo in this folder; no GitHub remote for now.
