@@ -228,7 +228,7 @@ rd_be32:
 ! boot_game: hand over to the disc. State as a game expects it after the
 ! BIOS: VBR = 0x06000000 (vbr_init), stack from the IP.BIN header
 ! (0x06002000 if zero), R0-R14, GBR, MACH/MACL, PR and SR all zero, the
-! cache purged and disabled, CD audio mixed in (slots 16/17) and execution
+! cache purged and enabled, CD audio mixed in (slots 16/17) and execution
 ! at 0x06002E00. The header's slave stack (0x06001000 if zero) is kept at
 ! 0x060002AC for slave_start. Does not return.
         .align  2
@@ -259,9 +259,9 @@ boot_game:
         mov.w   r0, @r1
         mov.l   c_ccr, r1               ! purge the cache (code was loaded
         mov     #0x10, r0               ! through cache-through addresses) and
-        mov.b   r0, @r1                 ! leave it disabled, as after power-on:
-                                        ! games enable it themselves, and some
-                                        ! load code later without purging
+        mov.b   r0, @r1                 ! leave it enabled: many games never
+        mov     #0x01, r0               ! write CCR and would run uncached
+        mov.b   r0, @r1                 ! (Panzer Dragoon choppy on MiSTer)
         mov.l   c_entry, r1
         mov     #0, r0
         ldc     r0, gbr
