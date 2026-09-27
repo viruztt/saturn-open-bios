@@ -85,7 +85,8 @@ step:
         add     #1, r9
 
 steps_done:
-        ! Read back a few live values: (label, address, 0 = word / 1 = long)
+        ! Read back a few live values: (label, address, 0 = word / 1 = long /
+        ! 2 = NUL-terminated string)
         add     #1, r9
         mova    readouts, r0
         mov     r0, r8
@@ -100,18 +101,23 @@ show:
         nop
         mov.l   @r8+, r1
         mov.l   @r8+, r0
+        mov     #24, r5
+        mov     r9, r6
+        cmp/eq  #2, r0
+        bt      3f
         tst     r0, r0
         bf/s    1f
         mov.l   @r1, r4
         mov.w   @r1, r4
         extu.w  r4, r4
-1:      mov     #24, r5
-        mov     r9, r6
-        mov.l   p_con_puthex, r0
-        jsr     @r0
+1:      mov.l   p_con_puthex, r0
+2:      jsr     @r0
         nop
         bra     show
         add     #1, r9
+3:      mov.l   p_con_puts, r0          ! string (no PC-relative load in a delay slot)
+        bra     2b
+        mov     r1, r4
 
 idle:
         bra     idle
@@ -142,6 +148,10 @@ steps:
         .long   msg_scu,  scu_init
         .long   msg_scsp, scsp_init
         .long   msg_vdp1, vdp1_init
+        .long   msg_cdi,  cd_init
+        .long   msg_cda,  cd_auth
+        .long   msg_cdt,  cd_toc
+        .long   msg_cdr,  cd_read_ip
         .long   0
 
         .align  2
@@ -149,6 +159,11 @@ readouts:
         .long   msg_vdp2, 0x25F80004, 0     ! VDP2 VRSIZE (VRAM size + version)
         .long   msg_vec4, 0x26000010, 1     ! master vector 4 in Work RAM
         .long   msg_edsr, 0x25D00010, 0     ! VDP1 EDSR (list end status)
+        .long   msg_cst,  CD_STAT, 1        ! CD status report CR1:CR2
+        .long   msg_cau,  CD_AUTH, 0        ! CD authentication status
+        .long   msg_tr1,  CD_TOC, 1         ! TOC entry for track 1
+        .long   msg_tlo,  CD_TOC + 101*4, 1 ! TOC lead-out
+        .long   msg_ip,   CD_HDR, 2         ! first 16 bytes of IP.BIN
         .long   0
 
         .align  2
@@ -177,3 +192,21 @@ msg_vdp2:       .asciz  "VDP2 VRSIZE"
 msg_vec4:       .asciz  "Vector 4 (RAM)"
         .align  2
 msg_edsr:       .asciz  "VDP1 EDSR"
+        .align  2
+msg_cdi:        .asciz  "CD block init"
+        .align  2
+msg_cda:        .asciz  "CD authenticate"
+        .align  2
+msg_cdt:        .asciz  "CD read TOC"
+        .align  2
+msg_cdr:        .asciz  "CD read FAD 150"
+        .align  2
+msg_cst:        .asciz  "CD status"
+        .align  2
+msg_cau:        .asciz  "CD auth"
+        .align  2
+msg_tr1:        .asciz  "TOC track 1"
+        .align  2
+msg_tlo:        .asciz  "TOC lead-out"
+        .align  2
+msg_ip:         .asciz  "IP.BIN"

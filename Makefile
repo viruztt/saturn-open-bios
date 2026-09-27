@@ -9,7 +9,7 @@ all: build/saturn-open-bios.bin
 build/%.o: src/%.s | build
 	$(AS) $(ASFLAGS) -o $@ $<
 
-OBJS = build/boot.o build/init.o build/console.o build/font.o
+OBJS = build/boot.o build/init.o build/cd.o build/console.o build/font.o
 
 build/saturn-open-bios.elf: $(OBJS) src/link.ld
 	$(LD) -EB -T src/link.ld -o $@ $(OBJS)

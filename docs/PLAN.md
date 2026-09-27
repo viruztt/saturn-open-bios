@@ -20,6 +20,13 @@ disassembled.
   system clip/local origin set, VDP2 colour RAM clear. All OK in Yabause.
   Still to do: SH-2 bus state controller / SDRAM setup (ignored by emulators,
   required on real hardware and MiSTer; values from the SH7604 manual).
+- Stage 4 done in Yabause: CD block driver in `src/cd.s` (command/reply
+  protocol, HIRQ waits with timeouts, data and info ports). Boot now runs
+  Initialize CD system, authenticate disc (0xE0/0xE1), read the TOC, and reads
+  FAD 150 into 0x06002000 (`docs/stage4-cd.png`: status PAUSE on track 1,
+  auth 4, TOC track 1 at FAD 150, lead-out at FAD 450, "SEGA SEGASATURN").
+  Still open: behaviour with no disc / open tray, and timeouts sized for a
+  real drive (authentication takes seconds on hardware).
 
 ## Test loop
 | Target | Custom BIOS accepted? | Notes |
@@ -53,7 +60,7 @@ disassembled.
 1. ~~Stage 0: code runs, screen colour~~
 2. ~~Text console on VDP2 (own 8x8 font) for on-screen debug output~~
 3. Full cold-boot hardware init matching the documented post-BIOS state (in progress)
-4. CD block driver: status, TOC, sector reads
+4. ~~CD block driver: status, TOC, sector reads~~ (no-disc handling and real-drive timeouts still open)
 5. IP.BIN load + checks, jump to game; test with homebrew discs (Yaul/Jo Engine samples, free to redistribute)
 6. System call table + interrupt handling, so SGL/SBL-based commercial games boot
 7. Backup RAM library, SMPC clock / peripheral helpers
@@ -75,7 +82,7 @@ compared on 2026-09-27. Values Yabause copies from Sega's ROM are not used.
 | VDP2 | display on, NBG0, leftovers from the boot logo | our console | games reinit; revisit at 5 |
 | Master SH-2 registers at jump | R0-R14 = 0, SR = 0, GBR = 0, PC = 0x06002E00 (IP.BIN code) | - | 5 |
 | Stack at jump | from IP.BIN header (master stack) | - | 5 |
-| CD block | HIRQ 0xFC1, CR1-4 = status report, disc authenticated | - | 4 |
+| CD block | HIRQ 0xFC1, CR1-4 = status report, disc authenticated | authenticated, TOC read, IP sector read | 4, done; exact HIRQ at 5 |
 | SMPC | last command INTBACK | - | 7 |
 | System calls 0x06000210-0x060003AC, SCU dispatch 0x06000100-0x0600017F, 0x06000A00 table | BIOS service pointers | - | 6 |
 
