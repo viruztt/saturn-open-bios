@@ -37,7 +37,8 @@
         .equ    DIAG_RING,  DIAG + 0x60     ! last 8 VBlank PCs
         .equ    DIAG_VBLANKS, 900           ! about 15 s at 60 Hz
 
-! DIAGWRAP n, service: count call n, then continue in the service
+! DIAGWRAP n, service: count call n, set the watchdog priority in IPRA
+! again, then continue in the service
         .macro  DIAGWRAP n, service
         .global diag_w_\service
         .align  2
@@ -46,11 +47,16 @@ diag_w_\service:
         mov.l   @r1, r0
         add     #1, r0
         mov.l   r0, @r1
+        mov.l   .Li\@, r1              ! games may clear IPRA (Virtua Cop
+        mov.w   @r1, r0                 ! does): give the watchdog tick its
+        or      #0xF0, r0               ! priority back on every call
+        mov.w   r0, @r1
         mov.l   .Lf\@, r0
         jmp     @r0
         nop
         .align  2
 .Lc\@:  .long   DIAG_CALLS + \n * 4
+.Li\@:  .long   0xFFFFFEE2
 .Lf\@:  .long   \service
         .endm
 
