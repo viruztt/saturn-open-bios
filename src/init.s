@@ -44,6 +44,10 @@ cpu_init:
         mov.l   c_scr, r1
         mov     #0, r0
         mov.b   r0, @r1                 ! SCR = 0: serial port off
+        mov.l   c_dmaor, r1             ! DMAOR = 1: DMA master enable, flags
+        mov     #1, r0                  ! clear. Games start SH-2 DMA channels
+        mov.l   r0, @r1                 ! and wait for TE (Virtua Cop hangs
+                                        ! with DME left 0 on MiSTer)
         sts.l   pr, @-r15               ! (stack not used yet: WRAM not
         bsr     poke_w                  !  cleared, but pushes are harmless)
         nop
@@ -336,6 +340,7 @@ c_snd_longs:    .long   0x80000 / 4
 c_scsp:         .long   SCSP
 c_vdp1_vram:    .long   VDP1_VRAM
 c_wtcsr:        .long   0xFFFFFE80
+c_dmaor:        .long   0xFFFFFFB0
 c_slave_vbr:    .long   0x06000400
 c_tier:         .long   0xFFFFFE10
         .ifdef  DIAG
