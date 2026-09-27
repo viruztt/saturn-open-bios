@@ -42,6 +42,10 @@ build/testdisc/%.bin: build/testdisc/%.o
 build/testdisc.iso: tools/mktestdisc.py build/testdisc/ip.bin build/testdisc/prog.bin
 	python3 tools/mktestdisc.py build/testdisc/ip.bin build/testdisc/prog.bin $@
 
+# The same disc as BIN/CUE with a CD-DA test tone as track 2 (for MiSTer)
+build/testdisc-audio.bin: tools/mkaudiodisc.py build/testdisc.iso
+	python3 tools/mkaudiodisc.py build/testdisc.iso $@ build/testdisc-audio.cue
+
 clean:
 	rm -rf build
 

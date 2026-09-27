@@ -104,8 +104,61 @@ _start:
         bt      5f
         mov.w   c_red, r0
 5:      mov.w   r0, @r1
+        bsr     play_audio
+        nop
 6:      bra     6b
         nop
+
+! play_audio: on the BIN/CUE test disc, play track 2 (a 440 Hz / 660 Hz test
+! tone) on repeat through the CD block, leaving the sound mixer as the BIOS
+! set it up. Clicks or crackling then come from that setup, not from a
+! game's sound driver. Prints whether the CD block took the command.
+play_audio:
+        sts.l   pr, @-r15
+        mova    s_audio, r0
+        mov     r0, r4
+        mov     #2, r5
+        bsr     puts
+        mov     #20, r6
+        mov.l   c_cd_hirq, r2
+        mov.l   c_cd_cr1, r1
+        mov.w   c_not_cmok, r0
+        mov.w   r0, @r2                 ! HIRQ bits written as 0 are cleared
+        mov.w   c_play_cr1, r0          ! Play, track mode
+        mov.w   r0, @(0, r1)
+        mov.w   c_track2, r0            ! from track 2 index 1
+        mov.w   r0, @(4, r1)
+        mov.w   c_play_cr3, r0          ! repeat forever, end: track 2
+        mov.w   r0, @(8, r1)
+        mov.w   c_track2, r0
+        mov.w   r0, @(12, r1)
+        mov.l   c_cd_wait, r3
+1:      mov.w   @r2, r0
+        tst     #1, r0                  ! CMOK
+        bf      2f
+        dt      r3
+        bf      1b
+        bra     3f
+        mova    s_fail, r0
+2:      mova    s_ok, r0
+3:      mov     r0, r4
+        mov     #28, r5
+        bsr     puts
+        mov     #20, r6
+        lds.l   @r15+, pr
+        rts
+        nop
+
+        .align  2
+c_cd_hirq:      .long   0x25890008
+c_cd_cr1:       .long   0x25890018
+c_cd_wait:      .long   0x00400000
+c_not_cmok:     .word   0xFFFE
+c_play_cr1:     .word   0x1000
+c_track2:       .word   0x0201
+c_play_cr3:     .word   0x0F00
+        .align  2
+s_audio:        .asciz  "CD AUDIO TONE L440 R660"
 
         .align  2
 c_sysbase:      .long   0x06000200

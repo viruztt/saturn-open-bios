@@ -376,9 +376,9 @@ scu_tab:
         .align  2
 scsp_tab:
         .long   SCSP + 0x000, 0x1000    ! KYONEX: apply key-off to all slots
-        .long   SCSP + 0x216, 0x00EF    ! slot 16 = CD audio left: EFSDL 7,
-        .long   SCSP + 0x236, 0x00FF    ! slot 17 = CD audio right: EFSDL 7,
-                                        ! panned hard left / right, so CD
+        .long   SCSP + 0x216, 0x00FF    ! slot 16 = CD audio left: EFSDL 7,
+        .long   SCSP + 0x236, 0x00EF    ! slot 17 = CD audio right: EFSDL 7,
+                                        ! EFPAN 0x1F left, 0x0F right, so CD
                                         ! audio plays for games that do not
                                         ! set up the mixer themselves
         .long   SCSP + 0x400, 0x020F    ! MEM4MB (512 KB sound RAM), MVOL 15
