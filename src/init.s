@@ -376,6 +376,8 @@ scu_tab:
         .align  2
 scsp_tab:
         .long   SCSP + 0x000, 0x1000    ! KYONEX: apply key-off to all slots
+        .ifndef NOMIX                   ! (NOMIX test builds: leave the mixer
+                                        ! and MEM4MB/MVOL at power-on values)
         .long   SCSP + 0x216, 0x001F    ! slot 16 = CD audio left: EFSDL 0,
         .long   SCSP + 0x236, 0x000F    ! slot 17 = CD audio right: EFSDL 0,
                                         ! EFPAN 0x1F left, 0x0F right; the
@@ -383,6 +385,7 @@ scsp_tab:
                                         ! (boot_game), so CD audio plays for
                                         ! games that do not set up the mixer
         .long   SCSP + 0x400, 0x020F    ! MEM4MB (512 KB sound RAM), MVOL 15
+        .endif
         .long   SCSP + 0x41E, 0         ! SCIEB: 68000 interrupts off
         .long   SCSP + 0x422, 0x07FF    ! SCIRE: ack all
         .long   SCSP + 0x42A, 0         ! MCIEB: main CPU interrupts off

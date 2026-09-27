@@ -251,12 +251,14 @@ boot_game:
         jsr     @r0
         nop
         .endif
+        .ifndef NOMIX
         mov.l   c_efsdl16, r1           ! CD audio into the mix only now: while
         mov.w   c_mix_left, r0          ! the BIOS reads data, any sector the
         mov.w   r0, @r1                 ! drive plays as audio would be noise
         mov.w   c_mix_right, r0
         add     #0x20, r1               ! slot 17
         mov.w   r0, @r1
+        .endif
         mov.l   c_ccr, r1               ! purge the cache (code was loaded
         mov     #0x10, r0               ! through cache-through addresses) and
         mov.b   r0, @r1                 ! leave it enabled: many games never

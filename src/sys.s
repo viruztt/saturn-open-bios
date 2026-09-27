@@ -496,7 +496,9 @@ clock_scu_tab:
 ! audio routed to the outputs at full level, as at boot (see scsp_init)
         .align  2
 clock_scsp_tab:
+        .ifndef NOMIX
         .long   0x25B00216, 0x00FF              ! slot 16: CD left, EFSDL 7, left
         .long   0x25B00236, 0x00EF              ! slot 17: CD right, EFSDL 7, right
         .long   0x25B00400, 0x020F              ! MEM4MB, MVOL 15
+        .endif
         .long   0
