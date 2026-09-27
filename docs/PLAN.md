@@ -13,14 +13,13 @@ disassembled.
   with `con_puts` / `con_puthex`; prints a banner and a live VDP2 register
   (`docs/stage1-console.png`).
 - Stage 3 in progress: cold-boot init steps in `src/init.s`, each reported
-  OK/FAIL on screen (`docs/stage3-init.png`): SH-2 on-chip peripherals off,
-  Work RAM clear, vector table copied to 0x06000000 + VBR, SMPC SSHOFF/SNDOFF,
-  SCU DMA/timer off + all interrupts masked, SCSP silenced + sound RAM clear,
-  VDP1 VRAM clear + END command, VDP2 colour RAM clear. All OK in Yabause.
-  Still to do: SH-2 bus state controller / SDRAM setup and SCU A-bus + RSEL
-  (ignored by emulators, required on real hardware and MiSTer; values to be
-  taken from the SH7604 and SCU manuals), and a check against Yabause's HLE
-  BIOS end state.
+  OK/FAIL on screen, plus live readbacks (`docs/stage3-init.png`): SH-2
+  on-chip peripherals off, Work RAM clear, master/slave vector tables at
+  0x06000000/0x06000400 with VBR, SMPC SSHOFF/SNDOFF, SCU DMA/timer off +
+  interrupts masked + A-bus/RSEL set, SCSP silenced + sound RAM clear, VDP1
+  system clip/local origin set, VDP2 colour RAM clear. All OK in Yabause.
+  Still to do: SH-2 bus state controller / SDRAM setup (ignored by emulators,
+  required on real hardware and MiSTer; values from the SH7604 manual).
 
 ## Test loop
 | Target | Custom BIOS accepted? | Notes |
@@ -60,6 +59,25 @@ disassembled.
 7. Backup RAM library, SMPC clock / peripheral helpers
 8. MiSTer + real-hardware testing; boot menu, CD player
 9. Mednafen: upstream a setting to allow a custom BIOS
+
+## Post-BIOS state checklist
+What a game sees when the BIOS jumps to it, from Yabause's HLE BIOS
+(`YabauseSpeedySetup` in `yabause.c`, `BiosInit` in `bios.c`, GPL-2.0-or-later),
+compared on 2026-09-27. Values Yabause copies from Sega's ROM are not used.
+
+| Item | Yabause state | Ours | Milestone |
+|---|---|---|---|
+| VBR | 0x06000000 | same | 3, done |
+| Master / slave vector tables | 0x06000000 / 0x06000400, default `rte` stub at 0x06000600, vectors 4/6/9/10 halt | same (halt is in ROM) | 3, done |
+| SCU ASR0/ASR1, AREF, RSEL, AIACK | 0x1FF01FF0, 0x1F, 1, 1 | same | 3, done |
+| SCU IMS | all masked (shadow 0xFFFFFFFF at 0x06000348) | registers masked, shadow not yet | 6 |
+| VDP1 system clip / local origin, EDSR | 319x223, (160,112), 3 | same (EDSR 2 after one list) | 3, done |
+| VDP2 | display on, NBG0, leftovers from the boot logo | our console | games reinit; revisit at 5 |
+| Master SH-2 registers at jump | R0-R14 = 0, SR = 0, GBR = 0, PC = 0x06002E00 (IP.BIN code) | - | 5 |
+| Stack at jump | from IP.BIN header (master stack) | - | 5 |
+| CD block | HIRQ 0xFC1, CR1-4 = status report, disc authenticated | - | 4 |
+| SMPC | last command INTBACK | - | 7 |
+| System calls 0x06000210-0x060003AC, SCU dispatch 0x06000100-0x0600017F, 0x06000A00 table | BIOS service pointers | - | 6 |
 
 ## Toolchain
 - Now: Debian/Ubuntu `binutils-sh-elf` (assembler only).

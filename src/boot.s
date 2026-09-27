@@ -8,6 +8,7 @@
 
         .section .text
         .global _start
+        .global unhandled
 
 ! ---- Exception vector table (SH-2: 4 bytes per vector) ---------------------
 vectors:
@@ -84,30 +85,43 @@ step:
         add     #1, r9
 
 steps_done:
-        ! Read something live from the hardware to prove the hex printer
+        ! Read back a few live values: (label, address, 0 = word / 1 = long)
         add     #1, r9
-        mova    msg_vdp2, r0
-        mov     r0, r4
+        mova    readouts, r0
+        mov     r0, r8
+show:
+        mov.l   @r8+, r4
+        tst     r4, r4
+        bt      idle
         mov     #2, r5
         mov     r9, r6
         mov.l   p_con_puts, r0
         jsr     @r0
         nop
-        mov.l   reg_vrsize, r1
+        mov.l   @r8+, r1
+        mov.l   @r8+, r0
+        tst     r0, r0
+        bf/s    1f
+        mov.l   @r1, r4
         mov.w   @r1, r4
         extu.w  r4, r4
-        mov     #24, r5
+1:      mov     #24, r5
         mov     r9, r6
         mov.l   p_con_puthex, r0
         jsr     @r0
         nop
+        bra     show
+        add     #1, r9
 
 idle:
         bra     idle
         nop
 
+! Fatal exceptions end up here: mask interrupts and halt
 unhandled:
-        bra     unhandled
+        mov.l   sr_init, r0
+        ldc     r0, sr
+1:      bra     1b
         nop
 
         .align  2
@@ -116,7 +130,6 @@ reg_ccr:        .long   0xFFFFFE92      ! SH-2 cache control register
 p_vdp2_init:    .long   vdp2_init
 p_con_puts:     .long   con_puts
 p_con_puthex:   .long   con_puthex
-reg_vrsize:     .long   0x25F80004      ! VDP2 VRSIZE (VRAM size + version)
 
 ! Boot steps in order: (name, routine). wram_clear must come before any step
 ! that uses the stack (smpc_init), and before vbr_init.
@@ -129,6 +142,13 @@ steps:
         .long   msg_scu,  scu_init
         .long   msg_scsp, scsp_init
         .long   msg_vdp1, vdp1_init
+        .long   0
+
+        .align  2
+readouts:
+        .long   msg_vdp2, 0x25F80004, 0     ! VDP2 VRSIZE (VRAM size + version)
+        .long   msg_vec4, 0x26000010, 1     ! master vector 4 in Work RAM
+        .long   msg_edsr, 0x25D00010, 0     ! VDP1 EDSR (list end status)
         .long   0
 
         .align  2
@@ -152,4 +172,8 @@ msg_ok:         .asciz  "OK"
         .align  2
 msg_fail:       .asciz  "FAIL"
         .align  2
-msg_vdp2:       .asciz  "VDP2 VRSIZE:"
+msg_vdp2:       .asciz  "VDP2 VRSIZE"
+        .align  2
+msg_vec4:       .asciz  "Vector 4 (RAM)"
+        .align  2
+msg_edsr:       .asciz  "VDP1 EDSR"
