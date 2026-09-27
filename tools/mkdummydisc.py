@@ -8,4 +8,5 @@ hdr = (b"SEGA SEGASATURN " b"SEGA TP OPENBIOS" + b"T-00000  V1.000".ljust(16)
 data = bytearray(2048 * 300)
 data[:len(hdr)] = hdr
 out = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "test", "dummy.iso")
+os.makedirs(os.path.dirname(out), exist_ok=True)
 open(out, "wb").write(data)

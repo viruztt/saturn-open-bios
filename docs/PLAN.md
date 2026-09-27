@@ -12,6 +12,15 @@ disassembled.
 - Stage 1 done: VDP2 text console (NBG0, own 5x7 font from `tools/mkfont.py`)
   with `con_puts` / `con_puthex`; prints a banner and a live VDP2 register
   (`docs/stage1-console.png`).
+- Stage 3 in progress: cold-boot init steps in `src/init.s`, each reported
+  OK/FAIL on screen (`docs/stage3-init.png`): SH-2 on-chip peripherals off,
+  Work RAM clear, vector table copied to 0x06000000 + VBR, SMPC SSHOFF/SNDOFF,
+  SCU DMA/timer off + all interrupts masked, SCSP silenced + sound RAM clear,
+  VDP1 VRAM clear + END command, VDP2 colour RAM clear. All OK in Yabause.
+  Still to do: SH-2 bus state controller / SDRAM setup and SCU A-bus + RSEL
+  (ignored by emulators, required on real hardware and MiSTer; values to be
+  taken from the SH7604 and SCU manuals), and a check against Yabause's HLE
+  BIOS end state.
 
 ## Test loop
 | Target | Custom BIOS accepted? | Notes |
@@ -44,7 +53,7 @@ disassembled.
 ## Milestones
 1. ~~Stage 0: code runs, screen colour~~
 2. ~~Text console on VDP2 (own 8x8 font) for on-screen debug output~~
-3. Full cold-boot hardware init matching the documented post-BIOS state
+3. Full cold-boot hardware init matching the documented post-BIOS state (in progress)
 4. CD block driver: status, TOC, sector reads
 5. IP.BIN load + checks, jump to game; test with homebrew discs (Yaul/Jo Engine samples, free to redistribute)
 6. System call table + interrupt handling, so SGL/SBL-based commercial games boot

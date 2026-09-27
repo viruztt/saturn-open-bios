@@ -49,6 +49,14 @@ vdp2_init:
         bf/s    2b
         add     #4, r1
 
+        ! Clear all 4 KB of colour RAM
+        mov.l   c_cram, r1
+        mov.w   c_cram_longs, r2
+6:      mov.l   r0, @r1
+        dt      r2
+        bf/s    6b
+        add     #4, r1
+
         ! Copy the font into character pattern memory
         mov.l   c_font, r1
         mov.l   c_font_end, r2
@@ -136,6 +144,7 @@ c_cram:         .long   VDP2_CRAM
 c_back:         .long   VDP2_VRAM + BACK_OFS
 c_map:          .long   VDP2_VRAM + MAP_OFS
 c_nregs:        .word   0x120 / 2
+c_cram_longs:   .word   0x1000 / 4
 c_white:        .word   0x7FFF
 c_backcol:      .word   0x8000 | (14 << 10) | (4 << 5) | 2   ! dark blue
 c_end:          .word   0xFFFF

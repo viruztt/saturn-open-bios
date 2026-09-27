@@ -3,7 +3,8 @@
 !
 ! Master SH-2 starts here after power-on: the ROM is mapped at 0x00000000 and the
 ! CPU fetches its initial PC and SP from the first two longwords of the vector table.
-! Brings up the VDP2 text console and prints a banner.
+! Brings up the VDP2 text console, then runs the cold-boot init steps
+! (src/init.s) and reports each one on screen.
 
         .section .text
         .global _start
@@ -29,6 +30,15 @@ _start:
         mov.l   sr_init, r0
         ldc     r0, sr
 
+        ! Cache: disable + purge, then enable (hardware is always accessed
+        ! through the cache-through mirrors)
+        mov.l   reg_ccr, r1
+        mov     #0x10, r0               ! CP
+        mov.b   r0, @r1
+        mov     #0x01, r0               ! CE
+        mov.b   r0, @r1
+
+        ! Console first, so every later step can report on screen
         mov.l   p_vdp2_init, r0
         jsr     @r0
         nop
@@ -41,27 +51,53 @@ _start:
         jsr     @r0
         nop
 
-        mova    msg_stage, r0
-        mov     r0, r4
+        ! Run the init steps: print the name, call it, print OK or FAIL.
+        ! r8 = step table, r9 = screen row
+        mova    steps, r0
+        mov     r0, r8
+        mov     #4, r9
+step:
+        mov.l   @r8+, r4
+        tst     r4, r4
+        bt      steps_done
         mov     #2, r5
-        mov     #4, r6
+        mov     r9, r6
         mov.l   p_con_puts, r0
         jsr     @r0
         nop
+        mov.l   @r8+, r0
+        jsr     @r0
+        nop
+        tst     r0, r0
+        bf      1f
+        mova    msg_ok, r0
+        bra     2f
+        nop
+1:      mova    msg_fail, r0
+2:      mov     r0, r4
+        mov     #24, r5
+        mov     r9, r6
+        mov.l   p_con_puts, r0
+        jsr     @r0
+        nop
+        bra     step
+        add     #1, r9
 
+steps_done:
         ! Read something live from the hardware to prove the hex printer
+        add     #1, r9
         mova    msg_vdp2, r0
         mov     r0, r4
         mov     #2, r5
-        mov     #6, r6
+        mov     r9, r6
         mov.l   p_con_puts, r0
         jsr     @r0
         nop
         mov.l   reg_vrsize, r1
         mov.w   @r1, r4
         extu.w  r4, r4
-        mov     #18, r5
-        mov     #6, r6
+        mov     #24, r5
+        mov     r9, r6
         mov.l   p_con_puthex, r0
         jsr     @r0
         nop
@@ -76,14 +112,44 @@ unhandled:
 
         .align  2
 sr_init:        .long   0x000000F0
+reg_ccr:        .long   0xFFFFFE92      ! SH-2 cache control register
 p_vdp2_init:    .long   vdp2_init
 p_con_puts:     .long   con_puts
 p_con_puthex:   .long   con_puthex
 reg_vrsize:     .long   0x25F80004      ! VDP2 VRSIZE (VRAM size + version)
 
+! Boot steps in order: (name, routine). wram_clear must come before any step
+! that uses the stack (smpc_init), and before vbr_init.
+        .align  2
+steps:
+        .long   msg_cpu,  cpu_init
+        .long   msg_wram, wram_clear
+        .long   msg_vbr,  vbr_init
+        .long   msg_smpc, smpc_init
+        .long   msg_scu,  scu_init
+        .long   msg_scsp, scsp_init
+        .long   msg_vdp1, vdp1_init
+        .long   0
+
         .align  2
 msg_title:      .asciz  "Saturn Open BIOS"
         .align  2
-msg_stage:      .asciz  "Stage 1: text console"
+msg_cpu:        .asciz  "SH-2 on-chip"
+        .align  2
+msg_wram:       .asciz  "Work RAM clear"
+        .align  2
+msg_vbr:        .asciz  "Vectors at 06000000"
+        .align  2
+msg_smpc:       .asciz  "SMPC slave+68K off"
+        .align  2
+msg_scu:        .asciz  "SCU DMA/IRQ off"
+        .align  2
+msg_scsp:       .asciz  "SCSP silence"
+        .align  2
+msg_vdp1:       .asciz  "VDP1 reset"
+        .align  2
+msg_ok:         .asciz  "OK"
+        .align  2
+msg_fail:       .asciz  "FAIL"
         .align  2
 msg_vdp2:       .asciz  "VDP2 VRSIZE:"
