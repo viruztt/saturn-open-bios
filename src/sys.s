@@ -22,6 +22,20 @@
         .section .text
         .global sys_init
         .global sys_default_vector
+        .global sc_power_clear, sc_cd_player, sc_mpeg_check, sc_cd_init2
+        .global sc_cd_init1, sc_change_prio, sc_set_scu_int, sc_get_scu_int
+        .global sc_set_sh2_int, sc_get_sh2_int, sc_change_clock, sc_get_sem
+        .global sc_clear_sem, sc_set_scu_mask, sc_change_scu_mask
+
+! CALL address, service: one call table entry. Diagnostic builds point it at
+! a counting wrapper (diag.s) instead.
+        .macro  CALL addr, service
+        .ifdef  DIAG
+        .long   \addr, diag_w_\service
+        .else
+        .long   \addr, \service
+        .endif
+        .endm
 
         .equ    SYS,        0x26000000      ! system area, cache-through
         .equ    RTE_STUB,   0x06000600
@@ -115,9 +129,18 @@ sys_default_vector:
         shll    r0
         rts
         add     r1, r0
-8:      mov.l   c_unhandled, r0
-        rts
-        nop
+8:      mov.l   c_crash, r1             ! crash screen entry for this vector
+        cmp/eq  #4, r0
+        bt      1f
+        add     #8, r1
+        cmp/eq  #6, r0
+        bt      1f
+        add     #8, r1
+        cmp/eq  #9, r0
+        bt      1f
+        add     #8, r1
+1:      rts
+        mov     r1, r0
 9:      mov.l   c_rte_stub, r0
         rts
         nop
@@ -285,6 +308,11 @@ sc_change_clock:
 ! Services that exist but have nothing to do here yet
         .align  2
 sc_nop:
+sc_power_clear:
+sc_cd_player:
+sc_mpeg_check:
+sc_cd_init2:
+sc_cd_init1:
         rts
         mov     #0, r0
 
@@ -307,6 +335,22 @@ scu_entries:
 
 scu_dispatch:
         mov.l   r1, @-r15
+        .ifdef  DIAG                    ! count the vector, sample PC, SR, PR
+        sts.l   pr, @-r15
+        mov.l   r0, @-r15
+        mov.l   r2, @-r15
+        mov.l   r3, @-r15               ! stack: r3 r2 r0 pr r1 r0' PC SR
+        mov.l   @(24, r15), r1
+        mov.l   @(28, r15), r2
+        mov.l   @(12, r15), r3
+        mov.l   p_diag_irq, r0
+        jsr     @r0
+        mov.l   @(8, r15), r0           ! vector
+        mov.l   @r15+, r3
+        mov.l   @r15+, r2
+        mov.l   @r15+, r0
+        lds.l   @r15+, pr
+        .endif
         mov.l   r2, @-r15
         mov.l   r3, @-r15
         mov.l   r4, @-r15
@@ -365,7 +409,7 @@ c_rts_stub_w:   .long   SYS + 0x610
 c_rts_nop:      .long   0x000B0009      ! rts; nop
 c_rts_stub:     .long   RTS_STUB
 c_rte_stub:     .long   RTE_STUB
-c_unhandled:    .long   unhandled
+c_crash:        .long   crash_entries
 c_entries:      .long   scu_entries
 c_user_tab:     .long   USER_TAB
 c_user_base:    .long   SYS + 0x900
@@ -380,29 +424,32 @@ c_smpc_sf:      .long   SMPC_SF
 c_smpc_comreg:  .long   SMPC_COMREG
 c_timeout:      .long   0x00100000
 c_abus_bit:     .long   0x8000
+        .ifdef  DIAG
+p_diag_irq:     .long   diag_irq
+        .endif
 
 ! System call pointers and system variables: (address, value)
         .align  2
 call_tab:
-        .long   SYS + 0x210, sc_nop             ! power-on memory clear
-        .long   SYS + 0x26C, sc_nop             ! execute CD player
-        .long   SYS + 0x274, sc_nop             ! check MPEG card
-        .long   SYS + 0x280, sc_change_prio     ! change SCU interrupt priority
-        .long   SYS + 0x29C, sc_nop             ! CD init 2
-        .long   SYS + 0x2DC, sc_nop             ! CD init 1
-        .long   SYS + 0x300, sc_set_scu_int     ! set SCU interrupt
-        .long   SYS + 0x304, sc_get_scu_int     ! get SCU interrupt
-        .long   SYS + 0x310, sc_set_sh2_int     ! set SH-2 interrupt
-        .long   SYS + 0x314, sc_get_sh2_int     ! get SH-2 interrupt
-        .long   SYS + 0x320, sc_change_clock    ! change system clock
+        CALL    SYS + 0x210, sc_power_clear   ! power-on memory clear
+        CALL    SYS + 0x26C, sc_cd_player   ! execute CD player
+        CALL    SYS + 0x274, sc_mpeg_check   ! check MPEG card
+        CALL    SYS + 0x280, sc_change_prio   ! change SCU interrupt priority
+        CALL    SYS + 0x29C, sc_cd_init2   ! CD init 2
+        CALL    SYS + 0x2DC, sc_cd_init1   ! CD init 1
+        CALL    SYS + 0x300, sc_set_scu_int   ! set SCU interrupt
+        CALL    SYS + 0x304, sc_get_scu_int   ! get SCU interrupt
+        CALL    SYS + 0x310, sc_set_sh2_int   ! set SH-2 interrupt
+        CALL    SYS + 0x314, sc_get_sh2_int   ! get SH-2 interrupt
+        CALL    SYS + 0x320, sc_change_clock   ! change system clock
         .long   SYS + 0x324, 0                  ! clock mode: 320 (26.8 MHz)
-        .long   SYS + 0x330, sc_get_sem         ! get semaphore
-        .long   SYS + 0x334, sc_clear_sem       ! clear semaphore
-        .long   SYS + 0x340, sc_set_scu_mask    ! set SCU interrupt mask
-        .long   SYS + 0x344, sc_change_scu_mask ! change SCU interrupt mask
+        CALL    SYS + 0x330, sc_get_sem   ! get semaphore
+        CALL    SYS + 0x334, sc_clear_sem   ! clear semaphore
+        CALL    SYS + 0x340, sc_set_scu_mask   ! set SCU interrupt mask
+        CALL    SYS + 0x344, sc_change_scu_mask   ! change SCU interrupt mask
         .long   SYS + 0x348, 0xFFFFFFFF         ! SCU interrupt mask shadow
         .long   SYS + 0x354, 0
-        .long   SYS + 0x358, bup_init           ! backup RAM library init (bup.s)
+        CALL    SYS + 0x358, bup_init   ! backup RAM library init (bup.s)
         .long   0
 
 ! Default priorities for SCU vectors 0x40-0x5F: SR while the handler runs,

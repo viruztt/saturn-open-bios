@@ -31,6 +31,21 @@ _start:
         mov.l   sr_init, r0
         ldc     r0, sr
 
+        ! Both SH-2s start here. The slave (BCR1 bit 15 = MASTER pin set) is
+        ! only started by a game, via SMPC SSHON: send it to slave_start
+        ! instead of re-initialising the machine under the running game.
+        mov.l   reg_bcr1, r1
+        mov.l   @r1, r0
+        mov.w   c_master_bit, r1
+        tst     r1, r0
+        bt      1f
+        mov.l   p_slave_start, r0
+        jmp     @r0
+        nop
+c_master_bit:   .word   0x8000
+        .align  2
+1:
+
         ! Cache: disable + purge, then enable (hardware is always accessed
         ! through the cache-through mirrors)
         mov.l   reg_ccr, r1
@@ -137,6 +152,10 @@ readouts_done:
         mov.l   p_con_puts, r0
         jsr     @r0
         nop
+        .ifdef  NOBOOT                  ! debug builds: stop before the hand-over
+        bra     idle
+        nop
+        .endif
         mov.l   p_boot_game, r0
         jmp     @r0
         nop
@@ -154,6 +173,8 @@ unhandled:
 
         .align  2
 sr_init:        .long   0x000000F0
+reg_bcr1:       .long   0xFFFFFFE0      ! bus control register 1
+p_slave_start:  .long   slave_start
 reg_ccr:        .long   0xFFFFFE92      ! SH-2 cache control register
 p_vdp2_init:    .long   vdp2_init
 p_con_puts:     .long   con_puts

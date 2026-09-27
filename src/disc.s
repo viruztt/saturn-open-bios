@@ -174,8 +174,10 @@ first_read:
 
 ! check_dest: r4 = load address, r5 = size. Returns r0 = 0 if the whole range
 ! is inside Work RAM Low (0x00200000-0x002FFFFF) or inside Work RAM High
-! after this disc's IP.BIN (0x06002000 + IP size to 0x060FFFFF). The BIOS's
-! own work area and stack stay below 0x06002000. Clobbers r1, r2.
+! from 0x06002000 up (0x06002000-0x060FFFFF), i.e. never over the system
+! area, vector tables or the BIOS stack below 0x06002000. Loading over the
+! tail of IP.BIN is allowed: games do it (e.g. a first read file at
+! 0x06003C00 with an IP size of 0x8000). Clobbers r1, r2.
         .align  2
 check_dest:
         add     r4, r5                  ! r5 = end (exclusive)
@@ -187,10 +189,7 @@ check_dest:
         mov.l   c_low_end, r1
         cmp/hi  r1, r5
         bf      7f                      ! end <= low end: inside Low
-        mov.l   c_ip_size, r1           ! IP.BIN ends at 0x06002000 + size
-        mov.l   @r1, r1
-        mov.l   c_high_start, r2
-        add     r2, r1
+        mov.l   c_high_start, r1
         cmp/hs  r1, r4
         bf      8f
         mov.l   c_high_end, r1
@@ -229,9 +228,17 @@ rd_be32:
 ! boot_game: hand over to the disc. State as a game expects it after the
 ! BIOS: VBR = 0x06000000 (vbr_init), stack from the IP.BIN header
 ! (0x06002000 if zero), R0-R14, GBR, MACH/MACL, PR and SR all zero, and
-! execution at 0x06002E00. Does not return.
+! execution at 0x06002E00. The header's slave stack (0x06001000 if zero) is
+! kept at 0x060002AC for slave_start. Does not return.
         .align  2
 boot_game:
+        mov.l   c_ip_sstack, r1
+        mov.l   @r1, r0
+        tst     r0, r0
+        bf      2f
+        mov.l   c_def_sstack, r0
+2:      mov.l   c_sys_sstack, r1
+        mov.l   r0, @r1
         mov.l   c_ip_mstack, r1
         mov.l   @r1, r15
         tst     r15, r15
@@ -270,6 +277,9 @@ c_ip_buf:       .long   IP_BUF
 c_ip_size:      .long   IP_SIZE
 c_ip_first:     .long   IP_FIRST
 c_ip_mstack:    .long   IP_MSTACK
+c_ip_sstack:    .long   IP_BUF + 0xEC
+c_sys_sstack:   .long   0x260002AC
+c_def_sstack:   .long   0x06001000
 c_ip_area_src:  .long   IP_BUF + 0x40
 c_ip_area:      .long   IP_AREA
 c_fr_addr:      .long   FR_ADDR

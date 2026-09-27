@@ -7,6 +7,8 @@
 
         .section .text
         .global cpu_init
+        .global cpu_vectors
+        .global slave_start
         .global wram_clear
         .global vbr_init
         .global smpc_init
@@ -28,7 +30,7 @@
         .equ    SMPC_SNDOFF, 0x07           ! hold the sound 68000 in reset
 
 ! cpu_init: quiesce the master SH-2 on-chip peripherals (interrupt priorities,
-! DMAC, serial port, watchdog).
+! DMAC, serial port, watchdog) and give them their usual vector numbers.
 ! TODO: bus state controller (BCR1/2, WCR, MCR, refresh) and SDRAM mode setup.
 ! Emulators ignore it, real hardware and MiSTer need it; values must come from
 ! the SH7604 manual and the Saturn memory map, not guessed.
@@ -37,13 +39,92 @@ cpu_init:
         mova    cpu_tab, r0
         mov     r0, r4
         mov.l   c_wtcsr, r1
-        mov.w   c_wdt_stop, r0
+        mov.l   c_wdt_stop, r0
         mov.w   r0, @r1                 ! WTCSR = 0x18: watchdog timer stopped
         mov.l   c_scr, r1
         mov     #0, r0
         mov.b   r0, @r1                 ! SCR = 0: serial port off
+        sts.l   pr, @-r15               ! (stack not used yet: WRAM not
+        bsr     poke_w                  !  cleared, but pushes are harmless)
+        nop
+        bsr     cpu_vectors
+        nop
+        mova    vec_tab_l, r0
+        bsr     poke_l
+        mov     r0, r4
+        lds.l   @r15+, pr
+        rts
+        mov     #0, r0
+
+! cpu_vectors: vector numbers for the on-chip peripherals, the same on both
+! CPUs (as Yabause sets them when it starts the slave): SCI 0x60-0x63, FRT
+! 0x64-0x66, WDT 0x68, BSC 0x69, DMAC 0x6C/0x6D, DIVU 0x6E. Games use the
+! FRT input capture interrupt (0x64) to signal between the two CPUs.
+        .align  2
+cpu_vectors:
+        mova    vec_tab, r0
+        mov     r0, r4
         bra     poke_w
         nop
+! slave_start: the slave SH-2 lands here from _start. Set up its on-chip
+! vectors, FRT input capture interrupt (priority 15, enabled: the master
+! signals the slave through it) and VBR (0x06000400), take its stack from
+! 0x060002AC (filled at hand-over from the IP.BIN header, 0x06001000 by
+! default) and jump to the entry address the game stored at 0x06000250.
+! Interrupts stay masked in SR; the game lowers the mask itself.
+        .align  2
+slave_start:
+        mov.l   c_ssp_default, r15      ! temporary stack for the calls below
+        .ifdef  DIAG
+        mov.l   c_diag_slave, r1
+        mov.l   @r1, r0
+        add     #1, r0
+        mov.l   r0, @r1
+        .endif
+        bsr     cpu_vectors
+        nop
+        mova    vec_tab_l, r0
+        bsr     poke_l
+        mov     r0, r4
+        mova    slave_irq_tab, r0
+        bsr     poke_w
+        mov     r0, r4
+        mov.l   c_tier, r1
+        mov     #0x81, r0               ! TIER: input capture interrupt on
+        mov.b   r0, @r1
+        mov.l   c_slave_vbr, r0
+        ldc     r0, vbr
+        mov.l   c_slave_stack, r1
+        mov.l   @r1, r15
+        tst     r15, r15
+        bf      1f
+        mov.l   c_ssp_default, r15
+1:      mov.l   c_slave_entry, r1
+        mov.l   @r1, r1
+        jmp     @r1
+        nop
+
+        .align  2
+vec_tab:
+        .long   0xFFFFFE62, 0x6061      ! VCRA: SCI receive error / receive
+        .long   0xFFFFFE64, 0x6263      ! VCRB: SCI transmit / transmit end
+        .long   0xFFFFFE66, 0x6465      ! VCRC: FRT input capture / compare
+        .long   0xFFFFFE68, 0x6600      ! VCRD: FRT overflow
+        .long   0xFFFFFEE4, 0x6869      ! VCRWDT: WDT / BSC refresh compare
+        .long   0
+        .align  2
+slave_irq_tab:
+        .long   0xFFFFFEE0, 0x0000      ! ICR
+        .long   0xFFFFFEE2, 0x0000      ! IPRA: DIVU/DMAC/WDT off
+        .long   0xFFFFFE60, 0x0F00      ! IPRB: FRT priority 15
+        .long   0
+        .align  2
+vec_tab_l:
+        .long   0xFFFFFFA8, 0x6C        ! VCRDMA1
+        .long   0xFFFFFFA0, 0x6D        ! VCRDMA0
+        .long   0xFFFFFF0C, 0x6E        ! VCRDIV
+        .long   0
+
 
 ! wram_clear: zero both 1 MB Work RAM banks. Must run before anything is
 ! pushed on the stack (the boot stack is in Work RAM High, below 0x06002000).
@@ -69,7 +150,8 @@ wram_clear:
 ! tables in Work RAM High and point the master's VBR at its table. Games read
 ! and patch these tables. Every vector defaults to an "rte" stub at 0x06000600
 ! so a stray interrupt just returns; the fatal CPU exceptions (illegal
-! instruction, illegal slot instruction, CPU and DMA address error) halt in ROM.
+! instruction, illegal slot instruction, CPU and DMA address error) go to the
+! crash screen (crash.s).
         .align  2
 vbr_init:
         mov.l   c_rte_nop, r0
@@ -86,16 +168,19 @@ vbr_init:
         dt      r3
         bf/s    1b
         add     #4, r2
-        mov.l   c_fatal, r0
+        mov.l   c_fatal, r0             ! crash entries, 8 bytes apart
         mov.l   c_wram_high, r1
         mov.l   c_slave_tab, r2
         mov.l   r0, @(4*4, r1)          ! general illegal instruction
-        mov.l   r0, @(6*4, r1)          ! slot illegal instruction
-        mov.l   r0, @(9*4, r1)          ! CPU address error
-        mov.l   r0, @(10*4, r1)         ! DMA address error
         mov.l   r0, @(4*4, r2)
+        add     #8, r0
+        mov.l   r0, @(6*4, r1)          ! slot illegal instruction
         mov.l   r0, @(6*4, r2)
+        add     #8, r0
+        mov.l   r0, @(9*4, r1)          ! CPU address error
         mov.l   r0, @(9*4, r2)
+        add     #8, r0
+        mov.l   r0, @(10*4, r1)         ! DMA address error
         mov.l   r0, @(10*4, r2)
         mov.l   c_vbr, r0
         ldc     r0, vbr
@@ -240,7 +325,7 @@ c_slave_tab:    .long   WRAM_HIGH + 0x400
 c_stub:         .long   0x06000600
 c_stub_w:       .long   WRAM_HIGH + 0x600
 c_rte_nop:      .long   0x002B0009      ! rte; nop
-c_fatal:        .long   unhandled
+c_fatal:        .long   crash_entries
 c_vdp1_edsr:    .long   VDP1_REGS + 0x10
 c_smpc_sf:      .long   SMPC_SF
 c_smpc_comreg:  .long   SMPC_COMREG
@@ -250,8 +335,16 @@ c_snd_longs:    .long   0x80000 / 4
 c_scsp:         .long   SCSP
 c_vdp1_vram:    .long   VDP1_VRAM
 c_wtcsr:        .long   0xFFFFFE80
+c_slave_vbr:    .long   0x06000400
+c_tier:         .long   0xFFFFFE10
+        .ifdef  DIAG
+c_diag_slave:   .long   DIAG_SLAVE
+        .endif
+c_slave_stack:  .long   0x260002AC      ! system variable: slave stack
+c_slave_entry:  .long   0x26000250      ! system variable: slave entry point
+c_ssp_default:  .long   0x06001000
 c_scr:          .long   0xFFFFFE02
-c_wdt_stop:     .word   0xA518          ! 0xA5 = WTCSR write key
+c_wdt_stop:     .long   0xA518          ! 0xA5 = WTCSR write key (word write)
 c_slot_words:   .word   0x400 / 2
 
         .align  2

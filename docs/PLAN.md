@@ -58,6 +58,26 @@ disassembled.
   listed blocks). The test disc writes, reads, verifies, lists and deletes a
   3000-byte, 53-block save and checks dates against independently computed
   values (`docs/stage7-bup.png`, all 12 service tests OK).
+- First commercial game boots (see Compatibility). Found and fixed on the way:
+  the slave SH-2 starts at the reset vector too, so `_start` now checks the
+  BCR1 MASTER bit and sends the slave to `slave_start` (on-chip vectors, FRT
+  input capture interrupt, VBR 0x06000400, stack from 0x060002AC, entry from
+  0x06000250) instead of re-initialising the machine under the game; the CD
+  block is left without the "disc changed" state (Get Hardware Info at boot);
+  first read files may load over the tail of IP.BIN.
+- Debug tools: fatal exceptions (vectors 4/6/9/10) show a crash screen with
+  vector, PC, SR, PR and SP; `make diag` builds a diagnostics BIOS
+  (`src/diag.s`) that counts system calls, samples the game's PC on VBlank,
+  and after ~15 s shows those plus a CD block/SCU/SMPC/VDP status snapshot;
+  `make run-image IMAGE=...` / `run-image-diag` boot a disc image in place.
+
+## Compatibility
+Tested with the owner's own disc dumps, read in place (never copied, and no
+game data or screenshots in this repository). Yabause 0.9.15.
+
+| Title | Result | Notes |
+|---|---|---|
+| Virtua Cop (JP) | Boots, attract mode runs | Needed the slave start path, CD "disc changed" fix, and loading over the IP.BIN tail |
 
 ## Test loop
 | Target | Custom BIOS accepted? | Notes |

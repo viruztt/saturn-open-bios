@@ -41,7 +41,9 @@
         .equ    CD_HDR,     CD_VARS + 0x1B0 ! first 16 bytes of IP.BIN + NUL
         .equ    IP_BUF,     0x26002000      ! IP.BIN goes to 0x06002000
 
-! cd_init: reset the CD block software state and record a status report.
+! cd_init: reset the CD block software state, read the hardware info (which
+! also clears the "disc changed" state, as games expect after the BIOS), and
+! record a status report.
         .align  2
 cd_init:
         sts.l   pr, @-r15
@@ -50,6 +52,14 @@ cd_init:
         mov     r0, r4
         tst     r0, r0
         bf      9f
+        mova    cmd_hwinfo, r0
+        bsr     cd_cmdt
+        mov     r0, r4
+        tst     r0, r0
+        bf      9f
+        mov.l   c_cd_hirq, r1           ! acknowledge DCHG
+        mov.w   c_not_dchg, r0
+        mov.w   r0, @r1
         mova    cmd_endxfer, r0
         bsr     cd_cmdt
         mov     r0, r4
@@ -323,6 +333,7 @@ c_cd_hdr:       .long   CD_HDR
 c_ip_buf:       .long   IP_BUF
 c_timeout:      .long   0x00100000
 c_not_cmok:     .word   ~HIRQ_CMOK & 0xFFFF
+c_not_dchg:     .word   ~0x0020 & 0xFFFF
 c_polls:        .word   0x4000
 c_toc_words:    .word   0xCC
 c_sector_longs: .word   2048 / 4
@@ -333,6 +344,7 @@ c_play:         .word   0x1080          ! Play disc, start given as FAD
 ! Commands: CR1, CR2, CR3, CR4
         .align  2
 cmd_status:     .word   0x0000, 0x0000, 0x0000, 0x0000  ! Get CD status
+cmd_hwinfo:     .word   0x0100, 0x0000, 0x0000, 0x0000  ! Get hardware info
 cmd_gettoc:     .word   0x0200, 0x0000, 0x0000, 0x0000  ! Get TOC
 cmd_init:       .word   0x0400, 0xFFFF, 0xFFFF, 0xFFFF  ! Initialize CD system (no changes)
 cmd_endxfer:    .word   0x0600, 0x0000, 0x0000, 0x0000  ! End data transfer

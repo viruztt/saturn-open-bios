@@ -3,23 +3,32 @@ AS      = sh-elf-as
 LD      = sh-elf-ld
 OBJCOPY = sh-elf-objcopy
 ASFLAGS = --isa=sh2 --big
+# B: output directory for the BIOS (build/diag for make diag)
+# DEFS: extra assembler symbols, e.g. --defsym DIAG=1
+B       = build
+DEFS    =
 
-all: build/saturn-open-bios.bin
+all: $(B)/saturn-open-bios.bin
 
-build/%.o: src/%.s | build
-	$(AS) $(ASFLAGS) -o $@ $<
+$(B)/%.o: src/%.s | $(B)
+	$(AS) $(ASFLAGS) $(DEFS) -o $@ $<
 
-OBJS = build/boot.o build/init.o build/sys.o build/bup.o build/cd.o build/disc.o build/console.o build/font.o
+OBJS = $(addprefix $(B)/,boot.o init.o sys.o bup.o crash.o diag.o cd.o disc.o console.o font.o)
 
-build/saturn-open-bios.elf: $(OBJS) src/link.ld
+$(B)/saturn-open-bios.elf: $(OBJS) src/link.ld
 	$(LD) -EB -T src/link.ld -o $@ $(OBJS)
 
 # The console expects exactly 512 KB; pad with 0xFF like an erased EPROM
-build/saturn-open-bios.bin: build/saturn-open-bios.elf
+$(B)/saturn-open-bios.bin: $(B)/saturn-open-bios.elf
 	$(OBJCOPY) -O binary --pad-to 0x80000 --gap-fill 0xFF $< $@
 
-build:
-	mkdir -p build
+$(B):
+	mkdir -p $(B)
+
+# Debug build with compatibility diagnostics (src/diag.s) in build/diag/
+diag:
+	$(MAKE) B=build/diag DEFS="--defsym DIAG=1" build/diag/saturn-open-bios.bin
+.PHONY: diag
 
 # Test disc: our own IP.BIN (placeholder security area) + a first read file
 build/testdisc/%.o: testdisc/%.s
@@ -42,3 +51,14 @@ clean:
 run: build/saturn-open-bios.bin build/testdisc.iso
 	sh tools/run-yabause.sh
 .PHONY: run
+
+# Boot any disc image in place (never copied): make run-image IMAGE=/path/game.cue
+# The screenshot goes to build/image.png, which is not tracked.
+# make run-image-diag does the same with the diagnostics build.
+run-image: build/saturn-open-bios.bin
+	test -n "$(IMAGE)"
+	sh tools/run-yabause.sh "$(IMAGE)" build/image.png
+run-image-diag: diag
+	test -n "$(IMAGE)"
+	BIOS=build/diag/saturn-open-bios.bin sh tools/run-yabause.sh "$(IMAGE)" build/image.png
+.PHONY: run-image run-image-diag
