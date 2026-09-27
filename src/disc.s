@@ -160,7 +160,7 @@ first_read:
         shlr    r5
         mov.w   c_fad150, r4
         add     r8, r4
-        mov.l   p_cd_read_file, r0      ! first file of the root: file ID 2
+        mov.l   p_cd_read, r0
         jsr     @r0
         nop
         bra     9f
@@ -294,7 +294,6 @@ c_def_stack:    .long   0x06002000
 c_entry:        .long   ENTRY
 c_ccr:          .long   0xFFFFFE92
 p_cd_read:      .long   cd_read
-p_cd_read_file: .long   cd_read_file
 c_ip_max:       .long   IP_MAX          ! .long: 0x8000 would sign-extend as a word
 c_ip_min:       .word   IP_MIN
 c_2047:         .word   2047

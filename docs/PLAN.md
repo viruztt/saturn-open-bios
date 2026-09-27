@@ -99,6 +99,13 @@ disassembled.
   it expects. MiSTer answers End Data Transfer with FFFFFF (no count), so
   CD_ERR 06FFFFFF there is informational. On a failed boot the hex row
   shows the start of the last sector read (or FAD 150 if IP.BIN was bad).
+- Fifth MiSTer run: volume descriptor and root directory read fine and the
+  first read file was found (0x38574 bytes at FAD 0xB2 to 0x06004000), but
+  none of its sectors arrived. That read was the only one started with the
+  CD block's Change Directory + Read File; on a real-drive CD block Change
+  Directory completes asynchronously and the file read never started. The
+  first read file is now loaded with Play like every other read (Read File
+  had been added while chasing the Kronos stall that turned out to be ICR).
 - Debug tools: fatal exceptions (vectors 4/6/9/10) show a crash screen with
   vector, PC, SR, PR and SP; `make diag` builds a diagnostics BIOS
   (`src/diag.s`) that counts system calls, samples the game's PC on VBlank,
@@ -126,9 +133,8 @@ Fixes found this way:
 - ICR VECMD = 1 on the master: the SCU supplies interrupt vectors. With 0,
   Kronos uses auto-vectors and never acknowledges the SCU, so no game gets
   its VBlank and the CPU drowns in interrupts.
-- First read file loaded with the CD block's Read File command (Change
-  Directory to the root, file ID 2); reads are retried with Play for any
-  missing sectors, in 64-sector requests, with time-based limits.
+- Reads are Play requests of up to 64 sectors, retried for any missing
+  sectors, with time-based limits; each sector's FAD is checked.
 
 ## Test loop
 | Target | Custom BIOS accepted? | Notes |

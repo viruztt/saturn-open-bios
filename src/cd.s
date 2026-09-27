@@ -18,7 +18,6 @@
         .global cd_toc
         .global cd_read_ip
         .global cd_read
-        .global cd_read_file
         .global CD_STAT
         .global CD_AUTH
         .global CD_TOC
@@ -57,7 +56,6 @@
         .equ    CD_LEFT,    CD_VARS + 0x1CC ! sectors it still had to read
         .equ    CD_CHUNK,   CD_VARS + 0x1D0 ! sectors left in the current Play
         .equ    CHUNK,      64              ! sectors per Play request
-        .equ    CD_MODE,    CD_VARS + 0x1D4 ! 1: start with Read File (fid 2)
         .equ    CD_WMODE,   CD_VARS + 0x1D8 ! data port reads: 0 = 32-bit, 1 = 16-bit
         .equ    CD_RAW0,    CD_VARS + 0x1E0 ! first 16 bytes of FAD 150, first try
         .equ    CD_LAST16,  CD_VARS + 0x1F0 ! first 16 bytes of the last sector read
@@ -375,22 +373,8 @@ read_fad150:
         .align  2
 sega_id15:      .ascii  "SEGA SEGASATURN"
 
-! cd_read_file: as cd_read, for the first file of the root directory
-! (file ID 2), which starts at FAD r4. The first attempt uses the CD block's
-! own Change Directory + Read File commands; retries use Play.
-        .align  2
-cd_read_file:
-        mov.l   c_cd_mode, r1
-        mov     #1, r0
-        bra     cd_read_common
-        mov.l   r0, @r1
-
         .align  2
 cd_read:
-        mov.l   c_cd_mode, r1
-        mov     #0, r0
-        mov.l   r0, @r1
-cd_read_common:
         sts.l   pr, @-r15
         mov.l   r8, @-r15
         mov.l   r9, @-r15
@@ -420,19 +404,9 @@ cd_read_common:
         mov     r0, r4
         tst     r0, r0
         bf      8f
-        mov.l   c_cd_mode, r1           ! first attempt of a file read?
-        mov.l   @r1, r0
+        bsr     cd_play_rest            ! Play CD_LEFT sectors from CD_FAD
+        nop
         tst     r0, r0
-        bt      10f
-        mov     #0, r0                  ! (retries use Play)
-        mov.l   r0, @r1
-        bsr     cd_start_file
-        nop
-        bra     11f
-        nop
-10:     bsr     cd_play_rest            ! Play CD_LEFT sectors from CD_FAD
-        nop
-11:     tst     r0, r0
         bf      8f
 1:      mov.l   c_polls_l, r11
 2:      mova    cmd_secnum, r0          ! wait until a sector is buffered
@@ -599,32 +573,6 @@ cd_read_common:
         rts
         nop
 
-! cd_start_file: Change Directory to the root, then Read File (file ID 2,
-! offset 0) into filter 0 / partition 0. The whole file is one request, so
-! CD_CHUNK = CD_LEFT. Returns cd_cmd's r0.
-        .align  2
-cd_start_file:
-        sts.l   pr, @-r15
-        mov.l   c_cmd_chdir, r4         ! CR1 = 0x7000
-        mov     #0, r5
-        mov.w   c_root_cr3, r6          ! filter 0, file ID 0xFFFFFF = root
-        bsr     cd_cmd
-        mov     #-1, r7
-        tst     r0, r0
-        bf      9f
-        mov.l   c_cd_left, r1
-        mov.l   @r1, r0
-        mov.l   c_cd_chunk, r1
-        mov.l   r0, @r1
-        mov.l   c_cmd_readfile, r4      ! CR1 = 0x7400, offset 0
-        mov     #0, r5
-        mov     #0, r6                  ! filter 0, file ID high = 0
-        bsr     cd_cmd
-        mov     #2, r7                  ! file ID 2
-9:      lds.l   @r15+, pr
-        rts
-        nop
-
 ! cd_play_rest: Play min(CD_LEFT, CHUNK) sectors starting at CD_FAD (FAD
 ! mode) and set CD_CHUNK to that count. Returns cd_cmd's r0.
         .align  2
@@ -782,9 +730,6 @@ c_cd_err:       .long   CD_ERR
 c_cd_fad:       .long   CD_FAD
 c_cd_left:      .long   CD_LEFT
 c_cd_chunk:     .long   CD_CHUNK
-c_cd_mode:      .long   CD_MODE
-c_cmd_chdir:    .long   0x7000
-c_cmd_readfile: .long   0x7400
 c_err_nocmok:   .long   0x01000000
 c_err_nosector: .long   0x02000000
 c_err_nohirq:   .long   0x03000000
@@ -814,7 +759,6 @@ c_sector_longs: .word   2048 / 4
 c_sector_bytes: .word   2048
 c_fad150:       .word   150
 c_play:         .word   0x1080          ! Play disc, start given as FAD
-c_root_cr3:     .word   0x00FF
 
 ! Commands: CR1, CR2, CR3, CR4
         .align  2
