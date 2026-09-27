@@ -267,7 +267,8 @@ sc_change_prio:
 
 ! 0x06000320 ChangeSystemClock(r4 = 0: 320 mode / 26.8 MHz, else 352 mode /
 ! 28.6 MHz). Issues SMPC CKCHG320/CKCHG352 and puts the SCU back as the
-! BIOS left it. TODO: standby/NMI handshake as on real hardware.
+! BIOS left it; the clock change also resets the SCSP, so the CD audio mix
+! and master volume are set again. TODO: standby/NMI handshake as on real hardware.
         .align  2
 sc_change_clock:
         mov.l   c_clock_mode, r1
@@ -301,7 +302,15 @@ sc_change_clock:
         mov.l   @r1+, r0
         bra     6b
         mov.l   r0, @r2
-7:      mov.l   c_mask_shadow, r1
+7:      mova    clock_scsp_tab, r0      ! SCSP: CD audio mix, master volume
+        mov     r0, r1
+10:     mov.l   @r1+, r2
+        tst     r2, r2
+        bt      11f
+        mov.l   @r1+, r0
+        bra     10b
+        mov.w   r0, @r2
+11:     mov.l   c_mask_shadow, r1
         mov.l   @r1, r0
         mov.l   c_scu_ims, r1
         mov.l   r0, @r1
@@ -481,4 +490,13 @@ clock_scu_tab:
         .long   0x25FE0090, 0x3FF               ! T0C
         .long   0x25FE0094, 0x1FF               ! T1S
         .long   0x25FE0098, 0                   ! T1MD
+        .long   0                               ! (SCSP entries follow as words)
+
+! SCSP state restored after a clock change (the SMPC resets the SCSP): CD
+! audio routed to the outputs at full level, as at boot (see scsp_init)
+        .align  2
+clock_scsp_tab:
+        .long   0x25B00216, 0x00EF              ! slot 16: CD left, EFSDL 7, left
+        .long   0x25B00236, 0x00FF              ! slot 17: CD right, EFSDL 7, right
+        .long   0x25B00400, 0x020F              ! MEM4MB, MVOL 15
         .long   0
