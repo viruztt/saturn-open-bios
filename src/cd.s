@@ -27,6 +27,7 @@
         .global CD_FAD
         .global CD_LEFT
         .global CD_RAW0
+        .global CD_LAST16
 
         .equ    CD_HIRQ,    0x25890008
         .equ    CD_CR1,     0x25890018      ! CR2..CR4 follow at +4, +8, +12
@@ -59,6 +60,7 @@
         .equ    CD_MODE,    CD_VARS + 0x1D4 ! 1: start with Read File (fid 2)
         .equ    CD_WMODE,   CD_VARS + 0x1D8 ! data port reads: 0 = 32-bit, 1 = 16-bit
         .equ    CD_RAW0,    CD_VARS + 0x1E0 ! first 16 bytes of FAD 150, first try
+        .equ    CD_LAST16,  CD_VARS + 0x1F0 ! first 16 bytes of the last sector read
         .equ    IP_BUF,     0x26002000      ! IP.BIN goes to 0x06002000
 
 ! cd_init: reset the CD block software state, read the hardware info (which
@@ -473,7 +475,37 @@ cd_read_common:
         mov.l   r0, @r1
         bra     8f
         mov     #1, r0
-3:      mova    cmd_getdel, r0
+3:      mova    cmd_secinfo, r0         ! which FAD is first in the partition?
+        bsr     cd_cmdt
+        mov     r0, r4
+        tst     r0, r0
+        bf      8f
+        mov.l   c_cd_resp, r1
+        mov.w   @r1, r0                 ! CR1: status, FAD[23:16]
+        extu.w  r0, r3
+        shlr8   r3
+        not     r3, r0                  ! status 0xFF (rejected): cannot tell,
+        tst     #0xFF, r0               ! take the sector as it is
+        bt      7f
+        mov.w   @r1, r0
+        and     #0xFF, r0
+        shll16  r0
+        mov     r0, r3
+        mov.w   @(2, r1), r0            ! CR2: FAD[15:0]
+        extu.w  r0, r0
+        or      r0, r3                  ! r3 = FAD of the buffered sector
+        mov.l   c_cd_fad, r1
+        mov.l   @r1, r0
+        cmp/eq  r0, r3
+        bt      7f
+        mova    cmd_delsec, r0          ! not the one we want (e.g. read-ahead
+        bsr     cd_cmdt                 ! from an earlier request): drop it
+        mov     r0, r4
+        tst     r0, r0
+        bf      8f
+        bra     2b
+        nop
+7:      mova    cmd_getdel, r0
         bsr     cd_cmdt
         mov     r0, r4
         tst     r0, r0
@@ -486,6 +518,7 @@ cd_read_common:
         nop                             ! filled: on MiSTer, reads of an empty
                                         ! FIFO return junk and leave the data
                                         ! behind for the next transfer
+        mov     r9, r2                  ! where this sector starts
         mov.l   c_cd_data, r1
         mov.l   c_cd_wmode, r0
         mov.l   @r0, r0
@@ -511,7 +544,13 @@ cd_read_common:
         add     #-2, r10
 15:     dt      r3
         bf      14b
-13:
+13:     mov.l   c_cd_last16, r1         ! keep its first 16 bytes
+        mov     #4, r3
+16:     mov.l   @r2+, r0
+        mov.l   r0, @r1
+        dt      r3
+        bf/s    16b
+        add     #4, r1
         mova    cmd_endxfer, r0
         bsr     cd_cmdt
         mov     r0, r4
@@ -765,6 +804,7 @@ c_sector_longs_l: .long 2048 / 4
 c_sector_words_l: .long 2048 / 2
 c_cd_wmode:     .long   CD_WMODE
 c_cd_raw0:      .long   CD_RAW0
+c_cd_last16:    .long   CD_LAST16
 c_toc_words_l:  .long   0xCC
 c_fad150_l:     .long   150
 c_sector_bytes_l: .long 2048
@@ -787,6 +827,8 @@ cmd_cdconn:     .word   0x3000, 0x0000, 0x0000, 0x0000  ! CD device -> filter 0
 cmd_resetsel:   .word   0x4800, 0x0000, 0x0000, 0x0000  ! Reset selector: partition 0
 cmd_secnum:     .word   0x5100, 0x0000, 0x0000, 0x0000  ! Get sector number: partition 0
 cmd_seclen:     .word   0x6000, 0x0000, 0x0000, 0x0000  ! Set sector length: 2048 get/put
+cmd_secinfo:    .word   0x5400, 0x0000, 0x0000, 0x0000  ! Get sector info: offset 0, partition 0
+cmd_delsec:     .word   0x6200, 0x0000, 0x0000, 0x0001  ! Delete 1 sector at offset 0, partition 0
 cmd_getdel:     .word   0x6300, 0x0000, 0x0000, 0x0001  ! Get then delete 1 sector, partition 0
 cmd_auth:       .word   0xE000, 0x0000, 0x0000, 0x0000  ! Authenticate disc
 cmd_authst:     .word   0xE100, 0x0000, 0x0000, 0x0000  ! Get authentication status

@@ -91,6 +91,14 @@ disassembled.
   one frame after DRDY before reading any transfer, and checks the End Data
   Transfer word count (TOC 204, sector 1024), recording CD_ERR 06xxxxxx on
   a mismatch.
+- Fourth MiSTer run: IP.BIN loads and passes (32-bit data port reads are
+  fine), then 1ST READ FILE failed on the ISO 9660 volume descriptor (FAD
+  166): most likely a sector left over from the previous request (a real
+  drive keeps reading ahead). cd_read now asks Get Sector Info for the FAD
+  of the first buffered sector and deletes any sector that is not the one
+  it expects. MiSTer answers End Data Transfer with FFFFFF (no count), so
+  CD_ERR 06FFFFFF there is informational. On a failed boot the hex row
+  shows the start of the last sector read (or FAD 150 if IP.BIN was bad).
 - Debug tools: fatal exceptions (vectors 4/6/9/10) show a crash screen with
   vector, PC, SR, PR and SP; `make diag` builds a diagnostics BIOS
   (`src/diag.s`) that counts system calls, samples the game's PC on VBlank,

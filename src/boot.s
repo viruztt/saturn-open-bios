@@ -142,10 +142,18 @@ show:
 
 readouts_done:
         ! Boot the disc only if every step passed; otherwise stay on this screen
-        ! and show the first 16 bytes FAD 150 delivered (hex) on the last row
+        ! and show 16 raw bytes (hex) on the last row: FAD 150 as first read if the
+        ! IP.BIN header was wrong, else the start of the last sector read
         tst     r10, r10
         bt      20f
-        mov.l   p_raw0, r8
+        mov.l   p_raw0, r8              ! FAD 150 if IP.BIN was the problem,
+        mov.l   p_hdr, r1               ! else the last sector read
+        mov.l   @r1, r0
+        mov.l   c_sega, r1
+        cmp/eq  r1, r0
+        bf      22f
+        mov.l   p_last16, r8
+22:
         mov     #2, r11
 21:     mov.l   @r8+, r4
         mov     r11, r5
@@ -196,6 +204,9 @@ p_con_puts:     .long   con_puts
 p_con_puthex:   .long   con_puthex
 p_boot_game:    .long   boot_game
 p_raw0:         .long   CD_RAW0
+p_last16:       .long   CD_LAST16
+p_hdr:          .long   CD_HDR
+c_sega:         .long   0x53454741      ! "SEGA"
 
 ! Boot steps in order: (name, routine). wram_clear must come before any step
 ! that uses the stack, and vbr_init before sys_init.
