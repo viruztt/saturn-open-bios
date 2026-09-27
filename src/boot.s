@@ -106,6 +106,7 @@ step:
         nop
 
 steps_done:
+        mov     r9, r13                 ! blank row between steps and readouts
         ! Read back a few live values: (label, address, 0 = word / 1 = long /
         ! 2 = NUL-terminated string)
         add     #1, r9
@@ -153,7 +154,30 @@ readouts_done:
         cmp/eq  r1, r0
         bf      22f
         mov.l   p_last16, r8
-22:
+22:     mov.l   p_sirej, r1             ! blank row: Get Sector Info rejected,
+        mov.l   @r1, r4                 ! sectors dropped, free buffer blocks
+        mov     #2, r5                  ! and HIRQ when a read gave up
+        mov.l   p_con_puthex, r0
+        jsr     @r0
+        mov     r13, r6
+        mov.l   p_dropped, r1
+        mov.l   @r1, r4
+        mov     #11, r5
+        mov.l   p_con_puthex, r0
+        jsr     @r0
+        mov     r13, r6
+        mov.l   p_freeblk, r1
+        mov.l   @r1, r4
+        mov     #20, r5
+        mov.l   p_con_puthex, r0
+        jsr     @r0
+        mov     r13, r6
+        mov.l   p_freeblk, r1
+        mov.l   @(4, r1), r4
+        mov     #29, r5
+        mov.l   p_con_puthex, r0
+        jsr     @r0
+        mov     r13, r6
         mov     #2, r11
 21:     mov.l   @r8+, r4
         mov     r11, r5
@@ -209,6 +233,9 @@ p_boot_game:    .long   boot_game
 p_handover_check: .long handover_check
 p_raw0:         .long   CD_RAW0
 p_last16:       .long   CD_LAST16
+p_sirej:        .long   CD_SIREJ
+p_dropped:      .long   CD_DROPPED
+p_freeblk:      .long   CD_FREEBLK
 p_hdr:          .long   CD_HDR
 c_sega:         .long   0x53454741      ! "SEGA"
 

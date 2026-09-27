@@ -118,6 +118,13 @@ disassembled.
   at the first read address, and the CD sector checks (Get Sector Info
   rejected count, sectors dropped for a wrong FAD). Remove once MiSTer
   boots games.
+- Eighth MiSTer run: IP.BIN now fine; the first read file (113 sectors)
+  stopped after 96 (64 + 32), with the drive paused and no sector arriving
+  even after three fresh Play requests. On a read that gives up, the BIOS
+  now records the free buffer blocks (Get Buffer Size) and HIRQ, and a
+  failed boot shows Get Sector Info rejects, dropped sectors, free blocks
+  and HIRQ on the row under the failed step. (Also fixed: the saved raw
+  bytes had been placed over the first-read variables.)
 - Debug tools: fatal exceptions (vectors 4/6/9/10) show a crash screen with
   vector, PC, SR, PR, SP and the 32 bytes around PC; `make diag` builds a diagnostics BIOS
   (`src/diag.s`) that counts system calls, samples the game's PC on VBlank,

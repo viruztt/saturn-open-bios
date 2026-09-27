@@ -29,6 +29,7 @@
         .global CD_LAST16
         .global CD_SIREJ
         .global CD_DROPPED
+        .global CD_FREEBLK
         .global vbl_wait
 
         .equ    CD_HIRQ,    0x25890008
@@ -60,10 +61,12 @@
         .equ    CD_CHUNK,   CD_VARS + 0x1D0 ! sectors left in the current Play
         .equ    CHUNK,      64              ! sectors per Play request
         .equ    CD_WMODE,   CD_VARS + 0x1D8 ! data port reads: 0 = 32-bit, 1 = 16-bit
-        .equ    CD_RAW0,    CD_VARS + 0x1E0 ! first 16 bytes of FAD 150, first try
-        .equ    CD_LAST16,  CD_VARS + 0x1F0 ! first 16 bytes of the last sector read
-        .equ    CD_SIREJ,   CD_VARS + 0x1C0 ! Get Sector Info answers rejected
+        .equ    CD_RAW0,    0x26000F40      ! first 16 bytes of FAD 150, first try
+        .equ    CD_LAST16,  0x26000F50      ! first 16 bytes of the last sector read
+        .equ    CD_SIREJ,   CD_VARS + 0x1E4 ! Get Sector Info answers rejected
         .equ    CD_DROPPED, CD_VARS + 0x1D4 ! sectors dropped (wrong FAD)
+        .equ    CD_FREEBLK, CD_VARS + 0x1DC ! free buffer blocks when a read gave
+        .equ    CD_HIRQ0,   CD_VARS + 0x1E0 !   up, and HIRQ then (CD_RAW0 moves)
         .equ    IP_BUF,     0x26002000      ! IP.BIN goes to 0x06002000
 
 ! cd_init: reset the CD block software state, read the hardware info (which
@@ -445,9 +448,24 @@ cd_read:
         add     #-1, r0
         bra     0b
         mov.l   r0, @r15
-7:      mov.l   c_cd_resp, r1           ! give up: record the drive status
+7:      mov.l   c_cd_resp, r1           ! give up: record the drive status,
+        mov.w   @r1, r0                 ! free buffer blocks and HIRQ
+        extu.w  r0, r0
+        mov.l   r0, @-r15
+        mova    cmd_bufsize, r0
+        bsr     cd_cmdt
+        mov     r0, r4
+        mov.l   c_cd_resp, r1
+        mov.w   @(2, r1), r0            ! CR2 = free blocks
+        extu.w  r0, r0
+        mov.l   c_cd_freeblk, r1
+        mov.l   r0, @r1
+        mov.l   c_cd_hirq, r1
         mov.w   @r1, r0
         extu.w  r0, r0
+        mov.l   c_cd_freeblk, r1
+        mov.l   r0, @(4, r1)
+        mov.l   @r15+, r0
         mov.l   c_err_nosector, r1
         or      r1, r0
         mov.l   c_cd_err, r1
@@ -767,6 +785,7 @@ c_cd_raw0:      .long   CD_RAW0
 c_cd_last16:    .long   CD_LAST16
 c_cd_sirej:     .long   CD_SIREJ
 c_cd_dropped:   .long   CD_DROPPED
+c_cd_freeblk:   .long   CD_FREEBLK
 c_toc_words_l:  .long   0xCC
 c_fad150_l:     .long   150
 c_sector_bytes_l: .long 2048
@@ -788,6 +807,7 @@ cmd_cdconn:     .word   0x3000, 0x0000, 0x0000, 0x0000  ! CD device -> filter 0
 cmd_resetsel:   .word   0x4800, 0x0000, 0x0000, 0x0000  ! Reset selector: partition 0
 cmd_secnum:     .word   0x5100, 0x0000, 0x0000, 0x0000  ! Get sector number: partition 0
 cmd_seclen:     .word   0x6000, 0x0000, 0x0000, 0x0000  ! Set sector length: 2048 get/put
+cmd_bufsize:    .word   0x5000, 0x0000, 0x0000, 0x0000  ! Get buffer size (CR2 = free blocks)
 cmd_secinfo:    .word   0x5400, 0x0000, 0x0000, 0x0000  ! Get sector info: offset 0, partition 0
 cmd_delsec:     .word   0x6200, 0x0000, 0x0000, 0x0001  ! Delete 1 sector at offset 0, partition 0
 cmd_getdel:     .word   0x6300, 0x0000, 0x0000, 0x0001  ! Get then delete 1 sector, partition 0
