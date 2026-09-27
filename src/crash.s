@@ -93,7 +93,39 @@ crash:
         mov     r14, r6
         bra     1b
         add     #1, r14
-2:      bra     2b
+2:      add     #1, r14             ! code around PC: 32 bytes from the
+        mova    t_code, r0              ! 16-byte boundary before it
+        mov     r0, r4
+        mov     #2, r5
+        mov.l   p_con_puts, r0
+        jsr     @r0
+        mov     r14, r6
+        mov     r9, r8
+        add     #-16, r8
+        mov     #-16, r0
+        and     r0, r8                  ! r8 = start address
+        mov     r8, r4
+        mov     #20, r5
+        mov.l   p_con_puthex, r0
+        jsr     @r0
+        mov     r14, r6
+        add     #1, r14
+        mov     #8, r13                 ! 8 longwords, 4 per row
+        mov     #2, r11
+3:      mov.l   @r8+, r4
+        mov     r11, r5
+        mov.l   p_con_puthex, r0
+        jsr     @r0
+        mov     r14, r6
+        add     #9, r11
+        mov     #38, r0
+        cmp/hs  r0, r11
+        bf      4f
+        mov     #2, r11
+        add     #1, r14
+4:      dt      r13
+        bf      3b
+5:      bra     5b
         nop
 
         .align  2
@@ -128,3 +160,5 @@ t_sp:           .asciz  "SP"
 t_call:         .asciz  "Word at PR-4"
         .align  2
 t_call2:        .asciz  "Word at PR-8"
+        .align  2
+t_code:         .asciz  "Code from"

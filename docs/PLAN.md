@@ -106,8 +106,13 @@ disassembled.
   Directory completes asynchronously and the file read never started. The
   first read file is now loaded with Play like every other read (Read File
   had been added while chasing the Kronos stall that turned out to be ICR).
+- Sixth MiSTer run: the whole boot passes and the BIOS hands over; the disc
+  code at 0x06002E00 then hits an illegal instruction (vector 4, PC
+  0x06002E08, registers as handed over). IP.BIN past its first sector is
+  probably not what the disc holds. The crash screen now also dumps the 32
+  bytes around PC to show what is in memory there.
 - Debug tools: fatal exceptions (vectors 4/6/9/10) show a crash screen with
-  vector, PC, SR, PR and SP; `make diag` builds a diagnostics BIOS
+  vector, PC, SR, PR, SP and the 32 bytes around PC; `make diag` builds a diagnostics BIOS
   (`src/diag.s`) that counts system calls, samples the game's PC on VBlank,
   and after ~15 s shows those plus a CD block/SCU/SMPC/VDP status snapshot;
   `make run-image IMAGE=...` / `run-image-diag` boot a disc image in place.
