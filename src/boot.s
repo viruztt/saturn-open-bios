@@ -58,6 +58,11 @@ c_master_bit:   .word   0x8000
         mov.l   p_vdp2_init, r0
         jsr     @r0
         nop
+        .ifdef  DIAG                    ! after a reset: where did the game hang?
+        mov.l   p_diag_postmortem, r0
+        jsr     @r0
+        nop
+        .endif
 
         mova    msg_title, r0
         mov     r0, r4
@@ -248,6 +253,9 @@ p_con_puts:     .long   con_puts
 p_con_puthex:   .long   con_puthex
 p_boot_game:    .long   boot_game
 p_handover_check: .long handover_check
+        .ifdef  DIAG
+p_diag_postmortem: .long diag_postmortem
+        .endif
 p_raw0:         .long   CD_RAW0
 p_last16:       .long   CD_LAST16
 p_sirej:        .long   CD_SIREJ

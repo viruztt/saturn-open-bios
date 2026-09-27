@@ -14,6 +14,12 @@
 ! about 15 s) it takes over the screen and shows the
 ! numbers: page 1 (calls), then about 5 s later page 2 (PCs and a snapshot
 ! of CD block, SCU, SMPC and VDP status). Variables live at 0x06000C80..
+!
+! A game that hangs with all interrupts masked never reaches either page.
+! For that case there is a post-mortem page: if the machine is reset (Work
+! RAM kept) after a game was started, the BIOS first shows the counters,
+! the PC ring and the top 256 bytes of the game's master stack (from the
+! IP.BIN header), whose return addresses show where the game was stuck.
 
         .section .text
 
@@ -21,6 +27,7 @@
 
         .global diag_irq
         .global diag_start_wdt
+        .global diag_postmortem
         .global DIAG_SLAVE
 
         .equ    DIAG,       0x26000C80      ! variables, cache-through
@@ -31,6 +38,8 @@
         .equ    DIAG_SLAVE, DIAG + 0x10     ! slave SH-2 starts
         .equ    DIAG_RINGI, DIAG + 0x14     ! next PC ring slot (0-7)
         .equ    DIAG_TICKS, DIAG + 0x18     ! watchdog ticks
+        .equ    DIAG_MAGIC, DIAG + 0x1C     ! "DIAG" once a game was started
+        .equ    MAGIC,      0x44494147
         .equ    DIAG_TICKLIM, 205           ! ~15 s of 73 ms ticks
         .equ    WDT_VECTOR, 0x68            ! as set in VCRWDT by cpu_vectors
         .equ    DIAG_CALLS, DIAG + 0x20     ! one longword per system call
@@ -77,6 +86,107 @@ diag_w_\service:
         DIAGWRAP 14, sc_change_scu_mask
         DIAGWRAP 15, bup_init
 
+! diag_postmortem: called at power-on/reset right after the console is up,
+! before anything touches Work RAM. If a game had been started, show the
+! post-mortem page (row 1: VBlanks, ticks; rows 2-3: PC ring; rows 5-8:
+! call counters in table order; rows 10-25: the 256 bytes below the IP.BIN
+! master stack top, 4 longwords per row, lowest address first) and halt.
+! The marker is cleared first, so the next reset boots normally. Uses no
+! stack (the game's may be where ours would go).
+        .align  2
+diag_postmortem:
+        mov.l   c_pm_magic_at, r1
+        mov.l   @r1, r0
+        mov.l   c_pm_magic, r2
+        cmp/eq  r2, r0
+        bt      1f
+        rts
+        nop
+1:      mov     #0, r0
+        mov.l   r0, @r1
+        mova    t_pm, r0
+        mov     r0, r4
+        mov     #2, r5
+        mov.l   p_pm_puts, r0
+        jsr     @r0
+        mov     #0, r6
+        mov.l   c_pm_diag, r8           ! row 1: VBlanks seen, watchdog ticks
+        mov.l   @r8, r4
+        mov     #2, r5
+        mov.l   p_pm_puthex, r0
+        jsr     @r0
+        mov     #1, r6
+        mov.l   @(24, r8), r4
+        mov     #11, r5
+        mov.l   p_pm_puthex, r0
+        jsr     @r0
+        mov     #1, r6
+        mov.l   c_pm_ring, r8           ! rows 2-3: PC ring (8)
+        mov     #8, r9
+        mov     #2, r10
+        bsr     pm_dump
+        nop
+        mov.l   c_pm_calls, r8          ! rows 5-8: call counters (16)
+        mov     #16, r9
+        mov     #5, r10
+        bsr     pm_dump
+        nop
+        mov.l   c_pm_ip_sp, r1          ! rows 10-25: 256 bytes below the
+        mov.l   @r1, r8                 ! game's stack top (0x06002000 if
+        tst     r8, r8                  ! the header leaves it 0)
+        bf      2f
+        mov.l   c_pm_def_sp, r8
+2:      mov     r8, r4
+        mov     #25, r5
+        mov.l   p_pm_puthex, r0
+        jsr     @r0
+        mov     #0, r6
+        mov.w   c_pm_256, r0
+        sub     r0, r8
+        mov     #64, r9
+        mov     #10, r10
+        bsr     pm_dump
+        nop
+3:      bra     3b
+        nop
+
+! pm_dump: r8 = address, r9 = longword count, r10 = first row; 4 per row.
+! PR is kept in r14 (no stack).
+pm_dump:
+        sts     pr, r14
+        mov     #2, r11
+1:      mov.l   @r8+, r4
+        mov     r11, r5
+        mov.l   p_pm_puthex, r0
+        jsr     @r0
+        mov     r10, r6
+        add     #9, r11
+        mov     #38, r0
+        cmp/hs  r0, r11
+        bf      2f
+        mov     #2, r11
+        add     #1, r10
+2:      dt      r9
+        bf      1b
+        lds     r14, pr
+        rts
+        nop
+
+        .align  2
+c_pm_magic_at:  .long   DIAG_MAGIC
+c_pm_magic:     .long   MAGIC
+c_pm_diag:      .long   DIAG
+c_pm_ring:      .long   DIAG_RING
+c_pm_calls:     .long   DIAG_CALLS
+c_pm_ip_sp:     .long   0x260020F0
+c_pm_def_sp:    .long   0x06002000
+p_pm_puts:      .long   con_puts
+p_pm_puthex:    .long   con_puthex
+c_pm_256:       .word   256
+        .align  2
+t_pm:           .asciz  "Post-mortem  stack top"
+        .align  2
+
 ! diag_irq: called by the SCU dispatcher with r0 = vector, r1 = the
 ! interrupted PC, r2 = SR, r3 = PR. May clobber r0-r3 only. Counts the
 ! vector; for VBlank-IN also samples the PC and shows the report once
@@ -122,6 +232,9 @@ sample:
 ! 73 ms per overflow at 28.6 MHz) at interrupt priority 15, with its master
 ! vector pointing at diag_wdt. Called at the hand-over. Clobbers r0, r1.
 diag_start_wdt:
+        mov.l   c_magic_at, r1          ! a game is starting: a reset from now
+        mov.l   c_magic, r0             ! on shows the post-mortem page
+        mov.l   r0, @r1
         mov.l   c_wdt_vec, r1           ! VBR table entry for vector 0x68
         mov.l   p_diag_wdt, r0
         mov.l   r0, @r1
@@ -173,6 +286,8 @@ diag_wdt:
         nop
 
         .align  2
+c_magic_at:     .long   DIAG_MAGIC
+c_magic:        .long   MAGIC
 c_wdt_vec:      .long   0x06000000 + WDT_VECTOR * 4
 p_diag_wdt:     .long   diag_wdt
 c_ipra:         .long   0xFFFFFEE2
