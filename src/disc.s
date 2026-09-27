@@ -228,8 +228,9 @@ rd_be32:
 ! boot_game: hand over to the disc. State as a game expects it after the
 ! BIOS: VBR = 0x06000000 (vbr_init), stack from the IP.BIN header
 ! (0x06002000 if zero), R0-R14, GBR, MACH/MACL, PR and SR all zero, the
-! cache purged and disabled, and execution at 0x06002E00. The header's slave stack (0x06001000 if zero) is
-! kept at 0x060002AC for slave_start. Does not return.
+! cache purged and disabled, CD audio mixed in (slots 16/17) and execution
+! at 0x06002E00. The header's slave stack (0x06001000 if zero) is kept at
+! 0x060002AC for slave_start. Does not return.
         .align  2
 boot_game:
         mov.l   c_ip_sstack, r1
@@ -250,6 +251,12 @@ boot_game:
         jsr     @r0
         nop
         .endif
+        mov.l   c_efsdl16, r1           ! CD audio into the mix only now: while
+        mov.w   c_mix_left, r0          ! the BIOS reads data, any sector the
+        mov.w   r0, @r1                 ! drive plays as audio would be noise
+        mov.w   c_mix_right, r0
+        add     #0x20, r1               ! slot 17
+        mov.w   r0, @r1
         mov.l   c_ccr, r1               ! purge the cache (code was loaded
         mov     #0x10, r0               ! through cache-through addresses) and
         mov.b   r0, @r1                 ! leave it disabled, as after power-on:
@@ -298,6 +305,10 @@ c_high_start:   .long   0x06002000
 c_high_end:     .long   0x06100000
 c_def_stack:    .long   0x06002000
 c_entry:        .long   ENTRY
+c_efsdl16:      .long   0x25B00216
+c_mix_left:     .word   0x00FF          ! EFSDL 7, EFPAN left
+c_mix_right:    .word   0x00EF          ! EFSDL 7, EFPAN right
+        .align  2
 c_ccr:          .long   0xFFFFFE92
 p_cd_read:      .long   cd_read
         .ifdef  DIAG

@@ -178,6 +178,22 @@ readouts_done:
         mov.l   p_con_puthex, r0
         jsr     @r0
         mov     r13, r6
+        mov.l   p_toc, r12              ! row 25: TOC entries for tracks 1-3
+        mov     #2, r11                 ! and the lead-out (control/ADR, FAD)
+23:     mov.l   @r12+, r4
+        mov     r11, r5
+        mov.l   p_con_puthex, r0
+        jsr     @r0
+        mov     #25, r6
+        add     #9, r11
+        mov     #29, r0
+        cmp/hs  r0, r11
+        bf      23b
+        mov.l   p_leadout, r1
+        mov.l   @r1, r4
+        mov.l   p_con_puthex, r0
+        jsr     @r0
+        mov     #25, r6
         mov     #2, r11
 21:     mov.l   @r8+, r4
         mov     r11, r5
@@ -237,6 +253,8 @@ p_sirej:        .long   CD_SIREJ
 p_dropped:      .long   CD_DROPPED
 p_freeblk:      .long   CD_FREEBLK
 p_hdr:          .long   CD_HDR
+p_toc:          .long   CD_TOC
+p_leadout:      .long   CD_TOC + 101 * 4
 c_sega:         .long   0x53454741      ! "SEGA"
 
 ! Boot steps in order: (name, routine). wram_clear must come before any step
