@@ -66,8 +66,16 @@ disassembled.
   block is left without the "disc changed" state (Get Hardware Info at boot);
   first read files may load over the tail of IP.BIN.
 - Boot screen readouts include the last CD error code (01 = no CMOK for a
-  command, 02 = no sector arrived, 03 = HIRQ bit never set), the next FAD
-  and sectors left of the last read.
+  command, 02 = no sector arrived, 03 = HIRQ bit never set, 04 =
+  authentication never finished, 05 = drive never ready), the next FAD and
+  sectors left of the last read.
+- First MiSTer run (2026-09-27): all hardware init steps OK (so the missing
+  bus state controller setup is not fatal there), then CD READ TOC failed:
+  authentication was taken as done while the CD block still answered 0xFFFF
+  ("busy"), and the TOC data never came within 0.5 s. CD waits now use VDP2
+  VBlank (1/60 s) as the time base; authentication waits up to 30 s for a
+  definite disc type (1-4); the drive must report PAUSE/STANDBY/PLAY before
+  authentication and TOC (up to 30 s); data-ready waits up to 10 s.
 - Debug tools: fatal exceptions (vectors 4/6/9/10) show a crash screen with
   vector, PC, SR, PR and SP; `make diag` builds a diagnostics BIOS
   (`src/diag.s`) that counts system calls, samples the game's PC on VBlank,

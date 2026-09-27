@@ -45,7 +45,9 @@
         .equ    CD_HDR,     CD_VARS + 0x1B0 ! first 16 bytes of IP.BIN + NUL
         ! Last CD failure: 01xxxxxx command xxxx got no CMOK, 02xxxxxx no
         ! sector arrived (xxxx = CR1 of the last status), 03xxxxxx HIRQ bits
-        ! xxxx never came (xxxx = HIRQ). 0 = none.
+        ! never came (xxxx = HIRQ), 04xxxxxx authentication never finished
+        ! (xxxx = last status), 05xxxxxx drive never ready (xxxx = CR1:
+        ! status in the high byte, e.g. 06 tray open, 07 no disc). 0 = none.
         .equ    CD_ERR,     CD_VARS + 0x1C4
         .equ    CD_FAD,     CD_VARS + 0x1C8 ! next FAD the last cd_read wanted
         .equ    CD_LEFT,    CD_VARS + 0x1CC ! sectors it still had to read
@@ -60,61 +62,77 @@
         .align  2
 cd_init:
         sts.l   pr, @-r15
-        mova    cmd_init, r0
+        mova    cmd_init_e, r0
         bsr     cd_cmdt
         mov     r0, r4
         tst     r0, r0
         bf      9f
-        mova    cmd_hwinfo, r0
+        mova    cmd_hwinfo_e, r0
         bsr     cd_cmdt
         mov     r0, r4
         tst     r0, r0
         bf      9f
-        mov.l   c_cd_hirq, r1           ! acknowledge DCHG
-        mov.l   c_not_dchg, r0
+        mov.l   c_cd_hirq_e, r1           ! acknowledge DCHG
+        mov.l   c_not_dchg_e, r0
         mov.w   r0, @r1
-        mova    cmd_endxfer, r0
+        mova    cmd_endxfer_e, r0
         bsr     cd_cmdt
         mov     r0, r4
         tst     r0, r0
         bf      9f
-        mova    cmd_status, r0
+        mova    cmd_status_e, r0
         bsr     cd_cmdt
         mov     r0, r4
-        mov.l   c_cd_resp, r1
+        mov.l   c_cd_resp_e, r1
         mov.l   @r1, r2                 ! CR1:CR2
-        mov.l   c_cd_stat, r1
+        mov.l   c_cd_stat_e, r1
         mov.l   r2, @r1
 9:      lds.l   @r15+, pr
         rts
         nop
 
-! cd_auth: ask the CD block to authenticate the disc, then poll the
-! authentication status until it is non-zero.
+! cd_auth: wait for the drive to be ready, ask the CD block to authenticate
+! the disc, then poll the authentication status once per frame until it is a
+! definite disc type: 1 audio CD, 2 data CD, 3 unlicensed data disc, 4 Saturn
+! disc. While it works the CD block answers 0 or 0xFFFF; a real drive takes
+! seconds. Gives up after AUTH_FRAMES (CD_ERR = 04xxxxxx, last answer).
         .align  2
 cd_auth:
         sts.l   pr, @-r15
         mov.l   r8, @-r15
-        mova    cmd_auth, r0
+        bsr     cd_ready
+        nop
+        tst     r0, r0
+        bf      9f
+        mova    cmd_auth_e, r0
         bsr     cd_cmdt
         mov     r0, r4
         tst     r0, r0
         bf      9f
-        mov.l   c_polls_l, r8
-1:      mova    cmd_authst, r0
+        mov.l   c_auth_frames_e, r8
+1:      bsr     vbl_wait
+        nop
+        mova    cmd_authst_e, r0
         bsr     cd_cmdt
         mov     r0, r4
         tst     r0, r0
         bf      9f
-        mov.l   c_cd_resp, r1
-        mov.w   @(2, r1), r0            ! CR2 = status
-        mov.l   c_cd_auth, r1
+        mov.l   c_cd_resp_e, r1
+        mov.w   @(2, r1), r0            ! CR2 = authentication status
         extu.w  r0, r0
+        mov.l   c_cd_auth_e, r1
         mov.w   r0, @r1
-        tst     r0, r0
+        mov     r0, r1                  ! done when 1 <= status <= 4
+        add     #-1, r1
+        mov     #4, r2
+        cmp/hs  r2, r1
         bf      2f
         dt      r8
         bf      1b
+        mov.l   c_err_noauth_e, r1        ! give up: record the last answer
+        or      r1, r0
+        mov.l   c_cd_err_e, r1
+        mov.l   r0, @r1
         bra     9f
         mov     #1, r0
 2:      mov     #0, r0
@@ -123,11 +141,59 @@ cd_auth:
         rts
         nop
 
-! cd_toc: read the 102-entry table of contents into CD_TOC.
+! cd_ready: poll Get Status once per frame until the drive reports PAUSE,
+! STANDBY or PLAY (spun up and idle), for up to READY_FRAMES. A tray that is
+! open or a missing disc simply never gets there. Returns r0 = 0, or 1 with
+! CD_ERR = 05xxxxxx (last CR1: status in the high byte).
+        .align  2
+cd_ready:
+        sts.l   pr, @-r15
+        mov.l   r8, @-r15
+        mov.l   c_ready_frames_e, r8
+1:      mova    cmd_status_e, r0
+        bsr     cd_cmdt
+        mov     r0, r4
+        tst     r0, r0
+        bf      9f
+        mov.l   c_cd_resp_e, r1
+        mov.w   @r1, r0
+        shlr8   r0
+        and     #0x0F, r0
+        cmp/eq  #1, r0                  ! PAUSE
+        bt      8f
+        cmp/eq  #2, r0                  ! STANDBY
+        bt      8f
+        cmp/eq  #3, r0                  ! PLAY
+        bt      8f
+        bsr     vbl_wait
+        nop
+        dt      r8
+        bf      1b
+        mov.l   c_cd_resp_e, r1           ! give up: record the drive status
+        mov.w   @r1, r0
+        extu.w  r0, r0
+        mov.l   c_err_notready_e, r1
+        or      r1, r0
+        mov.l   c_cd_err_e, r1
+        mov.l   r0, @r1
+        bra     9f
+        mov     #1, r0
+8:      mov     #0, r0
+9:      mov.l   @r15+, r8
+        lds.l   @r15+, pr
+        rts
+        nop
+
+! cd_toc: wait for the drive, then read the 102-entry table of contents into
+! CD_TOC.
         .align  2
 cd_toc:
         sts.l   pr, @-r15
-        mova    cmd_gettoc, r0
+        bsr     cd_ready
+        nop
+        tst     r0, r0
+        bf      9f
+        mova    cmd_gettoc_e, r0
         bsr     cd_cmdt
         mov     r0, r4
         tst     r0, r0
@@ -136,20 +202,70 @@ cd_toc:
         mov     #HIRQ_DRDY, r4
         tst     r0, r0
         bf      9f
-        mov.l   c_cd_info, r1
-        mov.l   c_cd_toc, r2
-        mov.l   c_toc_words_l, r3
+        mov.l   c_cd_info_e, r1
+        mov.l   c_cd_toc_e, r2
+        mov.l   c_toc_words_l_e, r3
 1:      mov.w   @r1, r0
         mov.w   r0, @r2
         dt      r3
         bf/s    1b
         add     #2, r2
-        mova    cmd_endxfer, r0
+        mova    cmd_endxfer_e, r0
         bsr     cd_cmdt
         mov     r0, r4
 9:      lds.l   @r15+, pr
         rts
         nop
+
+! vbl_wait: wait for the next VBlank to begin (VDP2 TVSTAT bit 3 going from
+! 0 to 1), about 1/60 s. This is the real time base for all CD waits, since
+! loop counts depend on CPU and bus speed. A loop bound keeps it from
+! hanging if VDP2 is not scanning. Clobbers r0-r2.
+        .align  2
+vbl_wait:
+        mov.l   c_tvstat_e, r1
+        mov.l   c_vbl_guard_e, r2
+1:      mov.w   @r1, r0                 ! let the current VBlank end
+        tst     #8, r0
+        bt      2f
+        dt      r2
+        bf      1b
+        rts
+        nop
+2:      mov.w   @r1, r0                 ! then wait for the next one
+        tst     #8, r0
+        bf      3f
+        dt      r2
+        bf      2b
+3:      rts
+        nop
+
+
+        .align  2
+! Constants for the routines above (literal loads only reach forward)
+c_auth_frames_e:.long   30 * 60         ! authentication: up to 30 s
+c_cd_auth_e:    .long   CD_AUTH
+c_cd_err_e:     .long   CD_ERR
+c_cd_hirq_e:    .long   CD_HIRQ
+c_cd_info_e:    .long   CD_INFO
+c_cd_resp_e:    .long   CD_RESP
+c_cd_stat_e:    .long   CD_STAT
+c_cd_toc_e:     .long   CD_TOC
+c_err_noauth_e: .long   0x04000000
+c_err_notready_e:.long   0x05000000
+c_not_dchg_e:   .long   0xFFDF          ! HIRQ write: acknowledge DCHG
+c_ready_frames_e:.long   30 * 60         ! spin-up / seek: up to 30 s
+c_toc_words_l_e:.long   0xCC
+c_tvstat_e:     .long   0x25F80004      ! VDP2 TVSTAT, bit 3 = VBLANK
+c_vbl_guard_e:  .long   0x00200000
+        .align  2
+cmd_auth_e:     .word   0xE000, 0x0000, 0x0000, 0x0000  ! Authenticate disc
+cmd_authst_e:   .word   0xE100, 0x0000, 0x0000, 0x0000  ! Get authentication status
+cmd_endxfer_e:  .word   0x0600, 0x0000, 0x0000, 0x0000  ! End data transfer
+cmd_gettoc_e:   .word   0x0200, 0x0000, 0x0000, 0x0000  ! Get TOC
+cmd_hwinfo_e:   .word   0x0100, 0x0000, 0x0000, 0x0000  ! Get hardware info
+cmd_init_e:     .word   0x0400, 0xFFFF, 0xFFFF, 0xFFFF  ! Initialize CD system (no changes)
+cmd_status_e:   .word   0x0000, 0x0000, 0x0000, 0x0000  ! Get CD status
 
 ! cd_read_ip: read FAD 150 (the first data sector, start of IP.BIN) into
 ! 0x06002000 and keep its first 16 bytes as a string in CD_HDR.
@@ -256,9 +372,8 @@ cd_read_common:
         mov.w   @(6, r1), r0            ! CR4 = sectors in partition 0
         tst     r0, r0
         bf      3f
-        mov.l   c_poll_delay, r0        ! about 1 ms between polls, so the
-6:      dt      r0                      ! limit is time, not a count
-        bf      6b
+        bsr     vbl_wait                ! one poll per frame
+        nop
         .ifdef  DIAG                    ! live: polls left, retries left
         mov     r11, r4
         mov     #2, r5
@@ -298,7 +413,7 @@ cd_read_common:
         tst     r0, r0
         bf      8f
         mov.l   c_cd_data, r1
-        mov.w   c_sector_longs, r3
+        mov.l   c_sector_longs_l, r3
 4:      mov.l   @r1, r0
         cmp/pl  r10
         bf      5f
@@ -489,25 +604,35 @@ cd_cmd:
         rts
         mov     #0, r0
 
-! cd_wait: r4 = HIRQ bit(s). Returns r0 = 0 once any is set, 1 on timeout.
+! cd_wait: r4 = HIRQ bit(s). Returns r0 = 0 once any is set, or 1 after
+! WAIT_FRAMES frames (CD_ERR = 03xxxxxx, HIRQ at that time).
         .align  2
 cd_wait:
-        mov.l   c_cd_hirq, r1
-        mov.l   c_timeout, r2
-1:      mov.w   @r1, r0
+        sts.l   pr, @-r15
+        mov.l   r8, @-r15
+        mov.l   c_wait_frames, r8
+1:      mov.l   c_cd_hirq, r1
+        mov.w   @r1, r0
         tst     r4, r0
         bf      2f
-        dt      r2
+        bsr     vbl_wait
+        nop
+        dt      r8
         bf      1b
-        extu.w  r0, r0                  ! record: HIRQ bits never came
+        mov.l   c_cd_hirq, r1           ! record: HIRQ bits never came
+        mov.w   @r1, r0
+        extu.w  r0, r0
         mov.l   c_err_nohirq, r1
         or      r1, r0
         mov.l   c_cd_err, r1
         mov.l   r0, @r1
-        rts
+        bra     9f
         mov     #1, r0
-2:      rts
-        mov     #0, r0
+2:      mov     #0, r0
+9:      mov.l   @r15+, r8
+        lds.l   @r15+, pr
+        rts
+        nop
 
         .align  2
 c_cd_hirq:      .long   CD_HIRQ
@@ -521,7 +646,6 @@ c_cd_toc:       .long   CD_TOC
 c_cd_hdr:       .long   CD_HDR
 c_ip_buf:       .long   IP_BUF
 c_timeout:      .long   0x00400000      ! about 0.5 s of polling
-c_poll_delay:   .long   0x00002000
 c_cd_err:       .long   CD_ERR
 c_cd_fad:       .long   CD_FAD
 c_cd_left:      .long   CD_LEFT
@@ -532,16 +656,23 @@ c_cmd_readfile: .long   0x7400
 c_err_nocmok:   .long   0x01000000
 c_err_nosector: .long   0x02000000
 c_err_nohirq:   .long   0x03000000
+c_err_noauth:   .long   0x04000000
+c_err_notready: .long   0x05000000
+c_tvstat:       .long   0x25F80004      ! VDP2 TVSTAT, bit 3 = VBLANK
+c_vbl_guard:    .long   0x00200000
+c_auth_frames:  .long   30 * 60         ! authentication: up to 30 s
+c_ready_frames: .long   30 * 60         ! spin-up / seek: up to 30 s
+c_wait_frames:  .long   10 * 60         ! data ready etc.: up to 10 s
         .ifdef  DIAG
 p_puthex:       .long   con_puthex
         .endif
 c_not_dchg:     .long   0xFFDF          ! HIRQ write: acknowledge DCHG
-c_polls_l:      .long   0x1000
+c_polls_l:      .long   5 * 60          ! frames without a sector before retrying
+c_sector_longs_l: .long 2048 / 4
 c_toc_words_l:  .long   0xCC
 c_fad150_l:     .long   150
 c_sector_bytes_l: .long 2048
 c_not_cmok:     .word   ~HIRQ_CMOK & 0xFFFF
-c_polls:        .word   0x1000          ! x ~1 ms: about 4 s per sector
 c_toc_words:    .word   0xCC
 c_sector_longs: .word   2048 / 4
 c_sector_bytes: .word   2048
