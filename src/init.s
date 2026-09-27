@@ -46,7 +46,7 @@ cpu_init:
         nop
 
 ! wram_clear: zero both 1 MB Work RAM banks. Must run before anything is
-! pushed on the stack (stack lives at the top of Work RAM High).
+! pushed on the stack (the boot stack is in Work RAM High, below 0x06002000).
         .align  2
 wram_clear:
         mov     #0, r0

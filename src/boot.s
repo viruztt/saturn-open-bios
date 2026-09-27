@@ -23,7 +23,7 @@ vectors:
         .long   unhandled       ! 64..127: external interrupt vectors
         .endr
 
-        .equ    STACK_TOP,  0x06100000   ! top of Work RAM High (1 MB at 0x06000000)
+        .equ    STACK_TOP,  0x06002000   ! below IP.BIN; the game's default master stack
 
         .align  2
 _start:
@@ -47,7 +47,7 @@ _start:
         mova    msg_title, r0
         mov     r0, r4
         mov     #2, r5
-        mov     #2, r6
+        mov     #1, r6
         mov.l   p_con_puts, r0
         jsr     @r0
         nop
@@ -57,7 +57,7 @@ _start:
         ! r8 = step table, r9 = screen row, r10 = nonzero once a step failed
         mova    steps, r0
         mov     r0, r8
-        mov     #4, r9
+        mov     #3, r9
         mov     #0, r10
 step:
         mov.l   @r8+, r4
@@ -161,12 +161,13 @@ p_con_puthex:   .long   con_puthex
 p_boot_game:    .long   boot_game
 
 ! Boot steps in order: (name, routine). wram_clear must come before any step
-! that uses the stack (smpc_init), and before vbr_init.
+! that uses the stack, and vbr_init before sys_init.
         .align  2
 steps:
         .long   msg_cpu,  cpu_init
         .long   msg_wram, wram_clear
         .long   msg_vbr,  vbr_init
+        .long   msg_sys,  sys_init
         .long   msg_smpc, smpc_init
         .long   msg_scu,  scu_init
         .long   msg_scsp, scsp_init
@@ -198,6 +199,8 @@ msg_cpu:        .asciz  "SH-2 on-chip"
 msg_wram:       .asciz  "Work RAM clear"
         .align  2
 msg_vbr:        .asciz  "Vectors at 06000000"
+        .align  2
+msg_sys:        .asciz  "System calls"
         .align  2
 msg_smpc:       .asciz  "SMPC slave+68K off"
         .align  2

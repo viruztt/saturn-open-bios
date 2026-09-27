@@ -28,11 +28,11 @@
         .equ    IP_MAX,     0x8000          ! 16 sectors
         .equ    ENTRY,      0x06002E00      ! first code after the security code
 
-        .equ    DISC_VARS,  0x260F0200      ! BIOS scratch (see cd.s)
+        .equ    DISC_VARS,  0x26000F00      ! BIOS boot work area (see sys.s)
         .equ    FR_ADDR,    DISC_VARS + 0x00
         .equ    FR_SIZE,    DISC_VARS + 0x04
         .equ    IP_AREA,    DISC_VARS + 0x08 ! area symbols, 10 chars + NUL
-        .equ    SCRATCH,    0x260F0400      ! one sector
+        .equ    SCRATCH,    0x26001000      ! one sector, up to 0x060017FF
 
 ! ip_load: check the hardware ID of the sector cd_read_ip loaded, then read
 ! the whole IP.BIN (size from its header) to 0x06002000.
@@ -174,10 +174,8 @@ first_read:
 
 ! check_dest: r4 = load address, r5 = size. Returns r0 = 0 if the whole range
 ! is inside Work RAM Low (0x00200000-0x002FFFFF) or inside Work RAM High
-! between the end of this disc's IP.BIN and the BIOS scratch area / stack
-! (0x060F0000). Clobbers r1, r2.
-! TODO: move BIOS scratch and stack into the system area so the whole of
-! Work RAM High is loadable, as on the original BIOS.
+! after this disc's IP.BIN (0x06002000 + IP size to 0x060FFFFF). The BIOS's
+! own work area and stack stay below 0x06002000. Clobbers r1, r2.
         .align  2
 check_dest:
         add     r4, r5                  ! r5 = end (exclusive)
@@ -281,7 +279,7 @@ c_uncached:     .long   0x20000000
 c_low_start:    .long   0x00200000
 c_low_end:      .long   0x00300000
 c_high_start:   .long   0x06002000
-c_high_end:     .long   0x060F0000
+c_high_end:     .long   0x06100000
 c_def_stack:    .long   0x06002000
 c_entry:        .long   ENTRY
 c_ccr:          .long   0xFFFFFE92

@@ -37,6 +37,19 @@ disassembled.
   the screen green (`docs/stage5-boot.png`). A bad header or load address
   stops boot with FAIL (`docs/stage5-rejects.png`). The boot stops at the
   first failed step.
+- Stage 6 in progress: system calls and SCU interrupt dispatch in `src/sys.s`.
+  Implemented: set/get SCU interrupt (0x06000300/304), set/get SH-2 interrupt
+  (310/314), change system clock (320), semaphores (330/334), set/change SCU
+  mask (340/344) with the shadow at 0x06000348, change SCU interrupt priority
+  (280), and a dispatcher for SCU vectors 0x40-0x5F that saves registers,
+  masks by priority, calls the game's handler and restores. CD player, MPEG
+  check, CD init and power-on memory clear are no-ops, backup RAM init is a
+  stub (milestone 7). The test disc calls each service and reports on screen
+  (`docs/stage6-services.png`, all OK in Yabause, including ten VBlank
+  interrupts through the dispatcher after a clock change).
+  The BIOS work area and boot stack moved into the system area
+  (0x06000D00-0x060017FF, stack below 0x06002000), so the whole of Work RAM
+  High above IP.BIN is loadable.
 
 ## Test loop
 | Target | Custom BIOS accepted? | Notes |
@@ -72,15 +85,18 @@ disassembled.
 3. Full cold-boot hardware init matching the documented post-BIOS state (in progress)
 4. ~~CD block driver: status, TOC, sector reads~~ (no-disc handling and real-drive timeouts still open)
 5. ~~IP.BIN load + checks, jump to game~~ (own test disc; next: third-party homebrew discs)
-6. System call table + interrupt handling, so SGL/SBL-based commercial games boot
+6. ~~System call table + interrupt handling~~ (needs checking against real SGL/SBL games)
 7. Backup RAM library, SMPC clock / peripheral helpers
 8. MiSTer + real-hardware testing; boot menu, CD player
 9. Mednafen: upstream a setting to allow a custom BIOS
 
 ## Known limits
-- BIOS scratch (0x060F0000) and stack (0x06100000) sit at the top of Work
-  RAM High, so a first read file may not extend past 0x060F0000. Move them
-  into the system area (0x06000000-0x06001FFF) with milestone 6.
+- The system area layout below 0x06002000 beyond the documented system
+  call addresses (priority table at 0x06000C00, boot work area
+  0x06000D00-0x060017FF) is our own choice; check it against real games.
+- ChangeSystemClock skips the standby/NMI handshake of the real hardware.
+- SetScuInterruptMask writes the SCU mask from the slave CPU too (Yabause
+  only does it on the master).
 - The first read file is loaded whole; sizes above the CD buffer (200
   sectors) are untested.
 
@@ -94,14 +110,14 @@ compared on 2026-09-27. Values Yabause copies from Sega's ROM are not used.
 | VBR | 0x06000000 | same | 3, done |
 | Master / slave vector tables | 0x06000000 / 0x06000400, default `rte` stub at 0x06000600, vectors 4/6/9/10 halt | same (halt is in ROM) | 3, done |
 | SCU ASR0/ASR1, AREF, RSEL, AIACK | 0x1FF01FF0, 0x1F, 1, 1 | same | 3, done |
-| SCU IMS | all masked (shadow 0xFFFFFFFF at 0x06000348) | registers masked, shadow not yet | 6 |
+| SCU IMS | all masked (shadow 0xFFFFFFFF at 0x06000348) | same | 6, done |
 | VDP1 system clip / local origin, EDSR | 319x223, (160,112), 3 | same (EDSR 2 after one list) | 3, done |
 | VDP2 | display on, NBG0, leftovers from the boot logo | our console | games reinit; revisit at 5 |
 | Master SH-2 registers at jump | R0-R14 = 0, SR = 0, GBR = 0, PC = 0x06002E00 (IP.BIN code) | same, cache purged | 5, done |
 | Stack at jump | from IP.BIN header (master stack), 0x06002000 if zero | same | 5, done |
 | CD block | HIRQ 0xFC1, CR1-4 = status report, disc authenticated | authenticated, TOC read, IP sector read | 4, done; exact HIRQ at 5 |
 | SMPC | last command INTBACK | - | 7 |
-| System calls 0x06000210-0x060003AC, SCU dispatch 0x06000100-0x0600017F, 0x06000A00 table | BIOS service pointers | - | 6 |
+| System calls 0x06000210-0x06000358, SCU dispatch 0x06000100-0x0600017F, 0x06000A00 table | BIOS service pointers | same; backup RAM calls 0x06000358/0x06000380-0x060003AC not yet | 6 done, 7 |
 
 ## Toolchain
 - Now: Debian/Ubuntu `binutils-sh-elf` (assembler only).

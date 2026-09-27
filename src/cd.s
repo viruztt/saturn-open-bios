@@ -31,9 +31,9 @@
         .equ    HIRQ_CMOK,  0x0001          ! command accepted, reply ready
         .equ    HIRQ_DRDY,  0x0002          ! data transfer ready
 
-        ! BIOS scratch below the stack in Work RAM High (cache-through).
+        ! BIOS boot work area in the system area (cache-through, see sys.s).
         ! Only needed until the BIOS hands over to the game.
-        .equ    CD_VARS,    0x260F0000
+        .equ    CD_VARS,    0x26000D00
         .equ    CD_RESP,    CD_VARS + 0x000 ! last reply: CR1..CR4 (words)
         .equ    CD_STAT,    CD_VARS + 0x008 ! first status report: CR1:CR2
         .equ    CD_AUTH,    CD_VARS + 0x00C ! authentication status (word)
