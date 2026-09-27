@@ -4,6 +4,9 @@
 
 Usage: mkaudiodisc.py IN.ISO OUT.BIN OUT.CUE
 
+Also writes OUT-pregap.cue: the same image with track 2 given as a PREGAP
+line plus INDEX 01, the layout many disc dumps use.
+
 Track 1 is the data (MODE1/2352 with sync, header, EDC and ECC). Track 2 is
 a generated test tone: 2 seconds of silence (index 0), then 30 seconds of
 a 440 Hz sine on the left channel and 660 Hz on the right. A clean tone
@@ -128,6 +131,14 @@ def main(iso_path, bin_path, cue_path):
         f.write("  TRACK 01 MODE1/2352\n    INDEX 01 00:00:00\n")
         f.write("  TRACK 02 AUDIO\n    INDEX 00 %s\n    INDEX 01 %s\n"
                 % (msf(count), msf(count + PREGAP)))
+    # The same image with track 2 described the way many disc dumps do it:
+    # a PREGAP line (2 seconds not stored in the file) and INDEX 01 only.
+    # The stored silence then counts as the end of track 1.
+    with open(cue_path[:-4] + "-pregap.cue", "w", newline="\r\n") as f:
+        f.write('FILE "%s" BINARY\n' % name)
+        f.write("  TRACK 01 MODE1/2352\n    INDEX 01 00:00:00\n")
+        f.write("  TRACK 02 AUDIO\n    PREGAP 00:02:00\n    INDEX 01 %s\n"
+                % msf(count + PREGAP))
 
 
 if __name__ == "__main__":

@@ -191,6 +191,7 @@ readouts_done:
         bf      23b
         mov.l   p_leadout, r1
         mov.l   @r1, r4
+        mov     #29, r5
         mov.l   p_con_puthex, r0
         jsr     @r0
         mov     #25, r6
