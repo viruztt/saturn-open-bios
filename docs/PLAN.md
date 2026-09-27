@@ -75,7 +75,8 @@ disassembled.
   `make run-image IMAGE=...` / `run-image-diag` boot a disc image in place.
 
 ## Compatibility
-Tested with the owner's own disc dumps, read in place (never copied, and no
+The owner reports that the rest of their dumps load too (not tested in
+depth). Tested with the owner's own disc dumps, read in place (never copied, and no
 game data or screenshots in this repository). Kronos 2.7 (libretro core in
 RetroArch on Windows) is the main reference; Yabause 0.9.15 (WSL, headless)
 is the quick automated check.
@@ -85,6 +86,7 @@ is the quick automated check.
 | Virtua Cop (JP) | Boots, attract mode | Boots, attract mode | |
 | Panzer Dragoon (JP) | Boots, intro plays | Boots, intro movie plays | |
 | The House of the Dead (JP) | Boots to title screen | Crashes (jumps into VDP1 RAM) | Also fails with Yabause's own HLE BIOS: emulator limit |
+| Shutsudo! Minisuka Police (JP) | Black screen | Black screen | Same with Kronos's and Yabause's own HLE BIOS. Game runs (VBlank interrupts, 10 SCU handlers, SCU mask changed every frame) but waits in a loop; not yet attributable to our BIOS |
 
 Fixes found this way:
 - Slave SH-2 start path (it starts at the reset vector too).
