@@ -142,8 +142,23 @@ show:
 
 readouts_done:
         ! Boot the disc only if every step passed; otherwise stay on this screen
+        ! and show the first 16 bytes FAD 150 delivered (hex) on the last row
         tst     r10, r10
-        bf      idle
+        bt      20f
+        mov.l   p_raw0, r8
+        mov     #2, r11
+21:     mov.l   @r8+, r4
+        mov     r11, r5
+        mov.l   p_con_puthex, r0
+        jsr     @r0
+        mov     #27, r6
+        add     #9, r11
+        mov     #38, r0
+        cmp/hs  r0, r11
+        bf      21b
+        bra     idle
+        nop
+20:
         add     #1, r9
         mova    msg_boot, r0
         mov     r0, r4
@@ -180,6 +195,7 @@ p_vdp2_init:    .long   vdp2_init
 p_con_puts:     .long   con_puts
 p_con_puthex:   .long   con_puthex
 p_boot_game:    .long   boot_game
+p_raw0:         .long   CD_RAW0
 
 ! Boot steps in order: (name, routine). wram_clear must come before any step
 ! that uses the stack, and vbr_init before sys_init.

@@ -26,6 +26,7 @@
         .global CD_ERR
         .global CD_FAD
         .global CD_LEFT
+        .global CD_RAW0
 
         .equ    CD_HIRQ,    0x25890008
         .equ    CD_CR1,     0x25890018      ! CR2..CR4 follow at +4, +8, +12
@@ -54,6 +55,8 @@
         .equ    CD_CHUNK,   CD_VARS + 0x1D0 ! sectors left in the current Play
         .equ    CHUNK,      64              ! sectors per Play request
         .equ    CD_MODE,    CD_VARS + 0x1D4 ! 1: start with Read File (fid 2)
+        .equ    CD_WMODE,   CD_VARS + 0x1D8 ! data port reads: 0 = 32-bit, 1 = 16-bit
+        .equ    CD_RAW0,    CD_VARS + 0x1E0 ! first 16 bytes of FAD 150, first try
         .equ    IP_BUF,     0x26002000      ! IP.BIN goes to 0x06002000
 
 ! cd_init: reset the CD block software state, read the hardware info (which
@@ -268,19 +271,49 @@ cmd_init_e:     .word   0x0400, 0xFFFF, 0xFFFF, 0xFFFF  ! Initialize CD system (
 cmd_status_e:   .word   0x0000, 0x0000, 0x0000, 0x0000  ! Get CD status
 
 ! cd_read_ip: read FAD 150 (the first data sector, start of IP.BIN) into
-! 0x06002000 and keep its first 16 bytes as a string in CD_HDR.
+! 0x06002000 and keep its first 16 bytes as a string in CD_HDR. The CD
+! block sits on a 16-bit bus: the first try reads the data port 32 bits at a
+! time; if the sector does not start with "SEGA SEGASATURN", it is read again
+! 16 bits at a time and that width is kept for all later reads. The bytes of
+! the first try are kept in CD_RAW0 for the boot screen.
         .align  2
 cd_read_ip:
         sts.l   pr, @-r15
-        mov.l   c_fad150_l, r4
-        mov     #1, r5
-        mov.l   c_ip_buf, r6
-        mov.l   c_sector_bytes_l, r7
-        bsr     cd_read
+        mov.l   c_cd_wmode, r1
+        mov     #0, r0
+        mov.l   r0, @r1
+        bsr     read_fad150
         nop
         tst     r0, r0
         bf      9f
-        mov.l   c_ip_buf, r1
+        mov.l   c_ip_buf, r1            ! keep what arrived
+        mov.l   c_cd_raw0, r2
+        mov     #4, r3
+1:      mov.l   @r1+, r0
+        mov.l   r0, @r2
+        dt      r3
+        bf/s    1b
+        add     #4, r2
+        mov.l   c_ip_buf, r1            ! "SEGA SEGASATURN"?
+        mova    sega_id15, r0
+        mov     r0, r2
+        mov     #15, r3
+2:      mov.b   @r1+, r0
+        mov.b   @r2+, r4
+        cmp/eq  r4, r0
+        bf      3f
+        dt      r3
+        bf      2b
+        bra     5f
+        nop
+3:      mov.l   c_cd_wmode, r1          ! no: try 16-bit data port reads
+        mov     #1, r0
+        mov.l   r0, @r1
+        bsr     read_fad150
+        nop
+        tst     r0, r0
+        bf      9f
+5:      mov.l   c_ip_buf, r1
         mov.l   c_cd_hdr, r2
         mov     #16, r3
 4:      mov.b   @r1+, r0
@@ -294,15 +327,17 @@ cd_read_ip:
         rts
         nop
 
-! cd_read: r4 = start FAD, r5 = sector count, r6 = destination (4-byte
-! aligned, use a cache-through address), r7 = bytes to store. Reads 2048-byte
-! sectors through buffer partition 0 and stores the first r7 bytes; the rest
-! of the last sector is drained and dropped. Reads are issued as Play
-! requests of at most CHUNK sectors, emptying the partition before each, so
-! the CD buffer (200 sectors) never fills. If no sector arrives for a while,
-! Play is issued again for the sectors still missing (up to 3 times), since
-! drives can drop reads. CD_FAD / CD_LEFT track the next FAD and the sectors
-! left. Returns r0 = 0, or 1 on error (see CD_ERR).
+read_fad150:
+        mov.l   c_fad150_l, r4
+        mov     #1, r5
+        mov.l   c_ip_buf, r6
+        mov.l   c_sector_bytes_l, r7
+        bra     cd_read
+        nop
+
+        .align  2
+sega_id15:      .ascii  "SEGA SEGASATURN"
+
 ! cd_read_file: as cd_read, for the first file of the root directory
 ! (file ID 2), which starts at FAD r4. The first attempt uses the CD block's
 ! own Change Directory + Read File commands; retries use Play.
@@ -413,7 +448,11 @@ cd_read_common:
         tst     r0, r0
         bf      8f
         mov.l   c_cd_data, r1
-        mov.l   c_sector_longs_l, r3
+        mov.l   c_cd_wmode, r0
+        mov.l   @r0, r0
+        tst     r0, r0
+        bf      12f
+        mov.l   c_sector_longs_l, r3    ! 32-bit reads
 4:      mov.l   @r1, r0
         cmp/pl  r10
         bf      5f
@@ -422,6 +461,18 @@ cd_read_common:
         add     #-4, r10
 5:      dt      r3
         bf      4b
+        bra     13f
+        nop
+12:     mov.l   c_sector_words_l, r3    ! 16-bit reads
+14:     mov.w   @r1, r0
+        cmp/pl  r10
+        bf      15f
+        mov.w   r0, @r9
+        add     #2, r9
+        add     #-2, r10
+15:     dt      r3
+        bf      14b
+13:
         mova    cmd_endxfer, r0
         bsr     cd_cmdt
         mov     r0, r4
@@ -669,6 +720,9 @@ p_puthex:       .long   con_puthex
 c_not_dchg:     .long   0xFFDF          ! HIRQ write: acknowledge DCHG
 c_polls_l:      .long   5 * 60          ! frames without a sector before retrying
 c_sector_longs_l: .long 2048 / 4
+c_sector_words_l: .long 2048 / 2
+c_cd_wmode:     .long   CD_WMODE
+c_cd_raw0:      .long   CD_RAW0
 c_toc_words_l:  .long   0xCC
 c_fad150_l:     .long   150
 c_sector_bytes_l: .long 2048

@@ -76,6 +76,13 @@ disassembled.
   VBlank (1/60 s) as the time base; authentication waits up to 30 s for a
   definite disc type (1-4); the drive must report PAUSE/STANDBY/PLAY before
   authentication and TOC (up to 30 s); data-ready waits up to 10 s.
+- Second MiSTer run: authentication (4) and TOC now fine, but the IP.BIN
+  header check failed on what FAD 150 delivered. The CD block is on the
+  16-bit A-bus; 32-bit reads of the data port are split in two, which may
+  not match real hardware. The first read is now 32-bit (what Yabause
+  0.9.15 supports); if the header is not "SEGA SEGASATURN" the sector is
+  read again 16 bits at a time and that width is kept. On a failed boot the
+  last screen row shows the first 16 bytes of the first try in hex.
 - Debug tools: fatal exceptions (vectors 4/6/9/10) show a crash screen with
   vector, PC, SR, PR and SP; `make diag` builds a diagnostics BIOS
   (`src/diag.s`) that counts system calls, samples the game's PC on VBlank,
