@@ -125,6 +125,13 @@ disassembled.
   failed boot shows Get Sector Info rejects, dropped sectors, free blocks
   and HIRQ on the row under the failed step. (Also fixed: the saved raw
   bytes had been placed over the first-read variables.)
+- Ninth MiSTer run (hand-over page): IP.BIN +0000 and the first read file
+  were right, but IP.BIN's second and third sectors held a repeating
+  16-byte pattern, and 574 read-ahead sectors had been dropped for a wrong
+  FAD. On real hardware HIRQ DRDY stays set until the host clears it, so
+  waiting for DRDY passed at once and an empty data port was read. The BIOS
+  now clears DRDY before Get TOC and before each Get Then Delete, and treats
+  a rejected Get Then Delete (status 0xFF) as "not there yet".
 - Debug tools: fatal exceptions (vectors 4/6/9/10) show a crash screen with
   vector, PC, SR, PR, SP and the 32 bytes around PC; `make diag` builds a diagnostics BIOS
   (`src/diag.s`) that counts system calls, samples the game's PC on VBlank,

@@ -206,6 +206,9 @@ cd_toc:
         nop
         tst     r0, r0
         bf      9f
+        mov.l   c_cd_hirq_e, r1         ! clear DRDY first (it stays set until
+        mov.l   c_not_drdy_e, r0        ! cleared on real hardware)
+        mov.w   r0, @r1
         mova    cmd_gettoc_e, r0
         bsr     cd_cmdt
         mov     r0, r4
@@ -289,6 +292,7 @@ check_xfer:
         .align  2
 ! Constants for the routines above (literal loads only reach forward)
 c_err_xfer_e:   .long   0x06000000
+c_not_drdy_e:   .long   0xFFFD
 c_auth_frames_e:.long   30 * 60         ! authentication: up to 30 s
 c_cd_auth_e:    .long   CD_AUTH
 c_cd_err_e:     .long   CD_ERR
@@ -512,11 +516,20 @@ cd_read:
         bf      8f
         bra     2b
         nop
-7:      mova    cmd_getdel, r0
+7:      mov.l   c_cd_hirq, r1           ! DRDY stays set until cleared: clear
+        mov.l   c_not_drdy, r0          ! it so the wait below is for this
+        mov.w   r0, @r1                 ! transfer, not an earlier one
+        mova    cmd_getdel, r0
         bsr     cd_cmdt
         mov     r0, r4
         tst     r0, r0
         bf      8f
+        mov.l   c_cd_resp, r1           ! rejected (status 0xFF, e.g. the sector
+        mov.w   @r1, r0                 ! is not there yet): keep waiting
+        shlr8   r0
+        not     r0, r0
+        tst     #0xFF, r0
+        bt      2b
         bsr     cd_wait
         mov     #HIRQ_DRDY, r4
         tst     r0, r0
@@ -786,6 +799,7 @@ c_cd_last16:    .long   CD_LAST16
 c_cd_sirej:     .long   CD_SIREJ
 c_cd_dropped:   .long   CD_DROPPED
 c_cd_freeblk:   .long   CD_FREEBLK
+c_not_drdy:     .long   0xFFFD          ! HIRQ write: clear DRDY only
 c_toc_words_l:  .long   0xCC
 c_fad150_l:     .long   150
 c_sector_bytes_l: .long 2048
