@@ -27,6 +27,16 @@ disassembled.
   auth 4, TOC track 1 at FAD 150, lead-out at FAD 450, "SEGA SEGASATURN").
   Still open: behaviour with no disc / open tray, and timeouts sized for a
   real drive (authentication takes seconds on hardware).
+- Stage 5 done in Yabause: disc boot in `src/disc.s`. Reads the whole IP.BIN
+  (size from its header) to 0x06002000, checks the hardware ID and that the IP
+  is big enough to hold the security code, finds the first file in the ISO
+  9660 root directory and loads it to the IP's first-read address (rejected
+  if outside Work RAM or over the BIOS scratch/stack), then hands over at
+  0x06002E00 with the documented register state. `make run` now boots our own
+  test disc (`testdisc/`, built by `tools/mktestdisc.py`), whose program turns
+  the screen green (`docs/stage5-boot.png`). A bad header or load address
+  stops boot with FAIL (`docs/stage5-rejects.png`). The boot stops at the
+  first failed step.
 
 ## Test loop
 | Target | Custom BIOS accepted? | Notes |
@@ -61,11 +71,18 @@ disassembled.
 2. ~~Text console on VDP2 (own 8x8 font) for on-screen debug output~~
 3. Full cold-boot hardware init matching the documented post-BIOS state (in progress)
 4. ~~CD block driver: status, TOC, sector reads~~ (no-disc handling and real-drive timeouts still open)
-5. IP.BIN load + checks, jump to game; test with homebrew discs (Yaul/Jo Engine samples, free to redistribute)
+5. ~~IP.BIN load + checks, jump to game~~ (own test disc; next: third-party homebrew discs)
 6. System call table + interrupt handling, so SGL/SBL-based commercial games boot
 7. Backup RAM library, SMPC clock / peripheral helpers
 8. MiSTer + real-hardware testing; boot menu, CD player
 9. Mednafen: upstream a setting to allow a custom BIOS
+
+## Known limits
+- BIOS scratch (0x060F0000) and stack (0x06100000) sit at the top of Work
+  RAM High, so a first read file may not extend past 0x060F0000. Move them
+  into the system area (0x06000000-0x06001FFF) with milestone 6.
+- The first read file is loaded whole; sizes above the CD buffer (200
+  sectors) are untested.
 
 ## Post-BIOS state checklist
 What a game sees when the BIOS jumps to it, from Yabause's HLE BIOS
@@ -80,8 +97,8 @@ compared on 2026-09-27. Values Yabause copies from Sega's ROM are not used.
 | SCU IMS | all masked (shadow 0xFFFFFFFF at 0x06000348) | registers masked, shadow not yet | 6 |
 | VDP1 system clip / local origin, EDSR | 319x223, (160,112), 3 | same (EDSR 2 after one list) | 3, done |
 | VDP2 | display on, NBG0, leftovers from the boot logo | our console | games reinit; revisit at 5 |
-| Master SH-2 registers at jump | R0-R14 = 0, SR = 0, GBR = 0, PC = 0x06002E00 (IP.BIN code) | - | 5 |
-| Stack at jump | from IP.BIN header (master stack) | - | 5 |
+| Master SH-2 registers at jump | R0-R14 = 0, SR = 0, GBR = 0, PC = 0x06002E00 (IP.BIN code) | same, cache purged | 5, done |
+| Stack at jump | from IP.BIN header (master stack), 0x06002000 if zero | same | 5, done |
 | CD block | HIRQ 0xFC1, CR1-4 = status report, disc authenticated | authenticated, TOC read, IP sector read | 4, done; exact HIRQ at 5 |
 | SMPC | last command INTBACK | - | 7 |
 | System calls 0x06000210-0x060003AC, SCU dispatch 0x06000100-0x0600017F, 0x06000A00 table | BIOS service pointers | - | 6 |
@@ -101,6 +118,10 @@ compared on 2026-09-27. Values Yabause copies from Sega's ROM are not used.
   "Disc Format Standards Specification", CD block notes by Charles MacDonald.
 
 ## Decisions
+- No lockout (owner, 2026-09-27): the IP.BIN security code is only checked for
+  presence (IP size >= 0xE20), never compared with Sega's bytes, and Sega's
+  code is never embedded in the ROM or put on our test disc. Area symbols
+  are shown but not enforced (region free).
 - Licence: GPL-2.0-or-later (owner, 2026-09-27). Yabause HLE code may be reused
   with attribution.
 - Code lives in a local git repo in this folder; no GitHub remote for now.

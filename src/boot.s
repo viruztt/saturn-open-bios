@@ -53,10 +53,12 @@ _start:
         nop
 
         ! Run the init steps: print the name, call it, print OK or FAIL.
-        ! r8 = step table, r9 = screen row
+        ! Later steps depend on earlier ones, so stop at the first failure.
+        ! r8 = step table, r9 = screen row, r10 = nonzero once a step failed
         mova    steps, r0
         mov     r0, r8
         mov     #4, r9
+        mov     #0, r10
 step:
         mov.l   @r8+, r4
         tst     r4, r4
@@ -74,15 +76,19 @@ step:
         mova    msg_ok, r0
         bra     2f
         nop
-1:      mova    msg_fail, r0
+1:      mov     #1, r10
+        mova    msg_fail, r0
 2:      mov     r0, r4
         mov     #24, r5
         mov     r9, r6
         mov.l   p_con_puts, r0
         jsr     @r0
         nop
-        bra     step
+        tst     r10, r10
+        bf/s    steps_done
         add     #1, r9
+        bra     step
+        nop
 
 steps_done:
         ! Read back a few live values: (label, address, 0 = word / 1 = long /
@@ -93,7 +99,7 @@ steps_done:
 show:
         mov.l   @r8+, r4
         tst     r4, r4
-        bt      idle
+        bt      readouts_done
         mov     #2, r5
         mov     r9, r6
         mov.l   p_con_puts, r0
@@ -119,6 +125,22 @@ show:
         bra     2b
         mov     r1, r4
 
+readouts_done:
+        ! Boot the disc only if every step passed; otherwise stay on this screen
+        tst     r10, r10
+        bf      idle
+        add     #1, r9
+        mova    msg_boot, r0
+        mov     r0, r4
+        mov     #2, r5
+        mov     r9, r6
+        mov.l   p_con_puts, r0
+        jsr     @r0
+        nop
+        mov.l   p_boot_game, r0
+        jmp     @r0
+        nop
+
 idle:
         bra     idle
         nop
@@ -136,6 +158,7 @@ reg_ccr:        .long   0xFFFFFE92      ! SH-2 cache control register
 p_vdp2_init:    .long   vdp2_init
 p_con_puts:     .long   con_puts
 p_con_puthex:   .long   con_puthex
+p_boot_game:    .long   boot_game
 
 ! Boot steps in order: (name, routine). wram_clear must come before any step
 ! that uses the stack (smpc_init), and before vbr_init.
@@ -152,18 +175,19 @@ steps:
         .long   msg_cda,  cd_auth
         .long   msg_cdt,  cd_toc
         .long   msg_cdr,  cd_read_ip
+        .long   msg_ipl,  ip_load
+        .long   msg_frd,  first_read
         .long   0
 
         .align  2
 readouts:
-        .long   msg_vdp2, 0x25F80004, 0     ! VDP2 VRSIZE (VRAM size + version)
-        .long   msg_vec4, 0x26000010, 1     ! master vector 4 in Work RAM
-        .long   msg_edsr, 0x25D00010, 0     ! VDP1 EDSR (list end status)
         .long   msg_cst,  CD_STAT, 1        ! CD status report CR1:CR2
         .long   msg_cau,  CD_AUTH, 0        ! CD authentication status
-        .long   msg_tr1,  CD_TOC, 1         ! TOC entry for track 1
         .long   msg_tlo,  CD_TOC + 101*4, 1 ! TOC lead-out
         .long   msg_ip,   CD_HDR, 2         ! first 16 bytes of IP.BIN
+        .long   msg_area, IP_AREA, 2        ! area symbols (shown, not enforced)
+        .long   msg_fra,  FR_ADDR, 1        ! first read file: load address
+        .long   msg_frs,  FR_SIZE, 1        !   and size in bytes
         .long   0
 
         .align  2
@@ -187,12 +211,6 @@ msg_ok:         .asciz  "OK"
         .align  2
 msg_fail:       .asciz  "FAIL"
         .align  2
-msg_vdp2:       .asciz  "VDP2 VRSIZE"
-        .align  2
-msg_vec4:       .asciz  "Vector 4 (RAM)"
-        .align  2
-msg_edsr:       .asciz  "VDP1 EDSR"
-        .align  2
 msg_cdi:        .asciz  "CD block init"
         .align  2
 msg_cda:        .asciz  "CD authenticate"
@@ -205,8 +223,18 @@ msg_cst:        .asciz  "CD status"
         .align  2
 msg_cau:        .asciz  "CD auth"
         .align  2
-msg_tr1:        .asciz  "TOC track 1"
-        .align  2
 msg_tlo:        .asciz  "TOC lead-out"
         .align  2
 msg_ip:         .asciz  "IP.BIN"
+        .align  2
+msg_ipl:        .asciz  "IP.BIN load+check"
+        .align  2
+msg_frd:        .asciz  "1st read file"
+        .align  2
+msg_area:       .asciz  "Area"
+        .align  2
+msg_fra:        .asciz  "1st read addr"
+        .align  2
+msg_frs:        .asciz  "1st read size"
+        .align  2
+msg_boot:       .asciz  "Booting disc..."

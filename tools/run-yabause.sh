@@ -4,7 +4,7 @@
 # Usage: tools/run-yabause.sh [disc.iso] [out.png]   (needs yabause, xvfb, x11-apps, imagemagick)
 set -e
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
-ISO=${1:-$ROOT/test/dummy.iso}
+ISO=${1:-$ROOT/build/testdisc.iso}
 OUT=${2:-$ROOT/build/screen.png}
 TMP=$(mktemp -d)
 timeout 40 xvfb-run -a -s "-screen 0 800x600x24" sh -c \

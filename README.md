@@ -6,8 +6,9 @@ Free, clean-room replacement boot ROM for the Sega Saturn (emulators and MiSTer)
     make          # -> build/saturn-open-bios.bin (512 KB)
     make run      # boots it in Yabause headlessly, saves build/screen.png
 
-Layout: `src/` SH-2 sources and linker script, `tools/` test scripts,
-`test/` placeholder disc image, `docs/PLAN.md` roadmap and research notes.
+Layout: `src/` SH-2 sources and linker script, `testdisc/` sources of the
+test disc (our own IP.BIN and program, built into `build/testdisc.iso`),
+`tools/` build and test scripts, `docs/PLAN.md` roadmap and research notes.
 
 ## Licence
 

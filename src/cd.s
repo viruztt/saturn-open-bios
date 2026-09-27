@@ -17,6 +17,7 @@
         .global cd_auth
         .global cd_toc
         .global cd_read_ip
+        .global cd_read
         .global CD_STAT
         .global CD_AUTH
         .global CD_TOC
@@ -132,7 +133,43 @@ cd_toc:
         .align  2
 cd_read_ip:
         sts.l   pr, @-r15
+        mov.w   c_fad150, r4
+        mov     #1, r5
+        mov.l   c_ip_buf, r6
+        mov.w   c_sector_bytes, r7
+        bsr     cd_read
+        nop
+        tst     r0, r0
+        bf      9f
+        mov.l   c_ip_buf, r1
+        mov.l   c_cd_hdr, r2
+        mov     #16, r3
+4:      mov.b   @r1+, r0
+        mov.b   r0, @r2
+        dt      r3
+        bf/s    4b
+        add     #1, r2
+        mov     #0, r0
+        mov.b   r0, @r2
+9:      lds.l   @r15+, pr
+        rts
+        nop
+
+! cd_read: r4 = start FAD, r5 = sector count, r6 = destination (4-byte
+! aligned, use a cache-through address), r7 = bytes to store. Reads 2048-byte
+! sectors through buffer partition 0 and stores the first r7 bytes; the rest
+! of the last sector is drained and dropped. Returns r0 = 0, or 1 on error.
+        .align  2
+cd_read:
+        sts.l   pr, @-r15
         mov.l   r8, @-r15
+        mov.l   r9, @-r15
+        mov.l   r10, @-r15
+        mov.l   r11, @-r15
+        mov     r5, r8                  ! sectors left
+        mov     r6, r9                  ! destination
+        mov     r7, r10                 ! bytes left to store
+        mov     r4, r11                 ! start FAD
         mova    cmd_seclen, r0          ! 2048-byte sectors
         bsr     cd_cmdt
         mov     r0, r4
@@ -148,13 +185,23 @@ cd_read_ip:
         mov     r0, r4
         tst     r0, r0
         bf      9f
-        mova    cmd_play, r0            ! read 1 sector from FAD 150
-        bsr     cd_cmdt
-        mov     r0, r4
+        mov     r11, r0                 ! Play: CR1 = 0x10 | FAD flag | FAD[22:16]
+        shlr16  r0
+        and     #0x7F, r0
+        mov.w   c_play, r4
+        or      r0, r4
+        extu.w  r11, r5                 ! CR2 = FAD[15:0]
+        mov     r8, r0                  ! CR3 = mode 0 | count flag | count[22:16]
+        shlr16  r0
+        and     #0x7F, r0
+        or      #0x80, r0
+        mov     r0, r6
+        bsr     cd_cmd
+        extu.w  r8, r7                  ! CR4 = count[15:0]
         tst     r0, r0
         bf      9f
-        mov.w   c_polls, r8
-1:      mova    cmd_secnum, r0          ! wait until the sector is buffered
+1:      mov.w   c_polls, r11
+2:      mova    cmd_secnum, r0          ! wait until a sector is buffered
         bsr     cd_cmdt
         mov     r0, r4
         tst     r0, r0
@@ -162,12 +209,12 @@ cd_read_ip:
         mov.l   c_cd_resp, r1
         mov.w   @(6, r1), r0            ! CR4 = sectors in partition 0
         tst     r0, r0
-        bf      2f
-        dt      r8
-        bf      1b
+        bf      3f
+        dt      r11
+        bf      2b
         bra     9f
         mov     #1, r0
-2:      mova    cmd_getdel, r0
+3:      mova    cmd_getdel, r0
         bsr     cd_cmdt
         mov     r0, r4
         tst     r0, r0
@@ -177,29 +224,27 @@ cd_read_ip:
         tst     r0, r0
         bf      9f
         mov.l   c_cd_data, r1
-        mov.l   c_ip_buf, r2
         mov.w   c_sector_longs, r3
-3:      mov.l   @r1, r0
-        mov.l   r0, @r2
-        dt      r3
-        bf/s    3b
-        add     #4, r2
+4:      mov.l   @r1, r0
+        cmp/pl  r10
+        bf      5f
+        mov.l   r0, @r9
+        add     #4, r9
+        add     #-4, r10
+5:      dt      r3
+        bf      4b
         mova    cmd_endxfer, r0
         bsr     cd_cmdt
         mov     r0, r4
         tst     r0, r0
         bf      9f
-        mov.l   c_ip_buf, r1
-        mov.l   c_cd_hdr, r2
-        mov     #16, r3
-4:      mov.b   @r1+, r0
-        mov.b   r0, @r2
-        dt      r3
-        bf/s    4b
-        add     #1, r2
+        dt      r8
+        bf      1b
         mov     #0, r0
-        mov.b   r0, @r2
-9:      mov.l   @r15+, r8
+9:      mov.l   @r15+, r11
+        mov.l   @r15+, r10
+        mov.l   @r15+, r9
+        mov.l   @r15+, r8
         lds.l   @r15+, pr
         rts
         nop
@@ -281,6 +326,9 @@ c_not_cmok:     .word   ~HIRQ_CMOK & 0xFFFF
 c_polls:        .word   0x4000
 c_toc_words:    .word   0xCC
 c_sector_longs: .word   2048 / 4
+c_sector_bytes: .word   2048
+c_fad150:       .word   150
+c_play:         .word   0x1080          ! Play disc, start given as FAD
 
 ! Commands: CR1, CR2, CR3, CR4
         .align  2
@@ -288,7 +336,6 @@ cmd_status:     .word   0x0000, 0x0000, 0x0000, 0x0000  ! Get CD status
 cmd_gettoc:     .word   0x0200, 0x0000, 0x0000, 0x0000  ! Get TOC
 cmd_init:       .word   0x0400, 0xFFFF, 0xFFFF, 0xFFFF  ! Initialize CD system (no changes)
 cmd_endxfer:    .word   0x0600, 0x0000, 0x0000, 0x0000  ! End data transfer
-cmd_play:       .word   0x1080, 0x0096, 0x0080, 0x0001  ! Play from FAD 150, 1 sector
 cmd_cdconn:     .word   0x3000, 0x0000, 0x0000, 0x0000  ! CD device -> filter 0
 cmd_resetsel:   .word   0x4800, 0x0000, 0x0000, 0x0000  ! Reset selector: partition 0
 cmd_secnum:     .word   0x5100, 0x0000, 0x0000, 0x0000  ! Get sector number: partition 0
