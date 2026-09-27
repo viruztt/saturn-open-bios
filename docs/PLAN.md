@@ -83,6 +83,14 @@ disassembled.
   0.9.15 supports); if the header is not "SEGA SEGASATURN" the sector is
   read again 16 bits at a time and that width is kept. On a failed boot the
   last screen row shows the first 16 bytes of the first try in hex.
+- Third MiSTer run: the hex row showed FFFFFFFF 41010000 01150000 01043BCB,
+  the last four TOC entries: the sector read got 16 bytes left over from
+  the TOC transfer. MiSTer's CD block serves TOC and sectors through one
+  FIFO and sets DRDY before the FIFO has filled; reads of the empty FIFO
+  return junk without consuming, leaving data behind. The BIOS now waits
+  one frame after DRDY before reading any transfer, and checks the End Data
+  Transfer word count (TOC 204, sector 1024), recording CD_ERR 06xxxxxx on
+  a mismatch.
 - Debug tools: fatal exceptions (vectors 4/6/9/10) show a crash screen with
   vector, PC, SR, PR and SP; `make diag` builds a diagnostics BIOS
   (`src/diag.s`) that counts system calls, samples the game's PC on VBlank,

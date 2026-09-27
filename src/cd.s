@@ -48,7 +48,9 @@
         ! sector arrived (xxxx = CR1 of the last status), 03xxxxxx HIRQ bits
         ! never came (xxxx = HIRQ), 04xxxxxx authentication never finished
         ! (xxxx = last status), 05xxxxxx drive never ready (xxxx = CR1:
-        ! status in the high byte, e.g. 06 tray open, 07 no disc). 0 = none.
+        ! status in the high byte, e.g. 06 tray open, 07 no disc),
+        ! 06xxxxxx a data transfer moved xxxxxx words instead of the
+        ! expected count (recorded only). 0 = none.
         .equ    CD_ERR,     CD_VARS + 0x1C4
         .equ    CD_FAD,     CD_VARS + 0x1C8 ! next FAD the last cd_read wanted
         .equ    CD_LEFT,    CD_VARS + 0x1CC ! sectors it still had to read
@@ -205,6 +207,8 @@ cd_toc:
         mov     #HIRQ_DRDY, r4
         tst     r0, r0
         bf      9f
+        bsr     vbl_wait                ! let the data FIFO fill (see cd_read)
+        nop
         mov.l   c_cd_info_e, r1
         mov.l   c_cd_toc_e, r2
         mov.l   c_toc_words_l_e, r3
@@ -216,6 +220,12 @@ cd_toc:
         mova    cmd_endxfer_e, r0
         bsr     cd_cmdt
         mov     r0, r4
+        tst     r0, r0
+        bf      9f
+        mov.l   c_toc_words_l_e, r4     ! all 204 words moved?
+        bsr     check_xfer
+        nop
+        mov     #0, r0
 9:      lds.l   @r15+, pr
         rts
         nop
@@ -243,9 +253,34 @@ vbl_wait:
 3:      rts
         nop
 
+! check_xfer: r4 = words the transfer should have moved. Reads the End Data
+! Transfer reply in CD_RESP (CR1 low byte : CR2 = words transferred) and, if
+! it differs and no error is recorded yet, sets CD_ERR = 06xxxxxx (the
+! count). Not fatal: it documents short transfers for the boot screen.
+! Clobbers r0-r2.
+check_xfer:
+        mov.l   c_cd_resp_e, r1
+        mov.w   @(2, r1), r0            ! CR2
+        extu.w  r0, r2
+        mov.w   @r1, r0                 ! CR1 low byte
+        and     #0xFF, r0
+        shll16  r0
+        or      r2, r0
+        cmp/eq  r4, r0
+        bt      9f
+        mov.l   c_cd_err_e, r1
+        mov.l   @r1, r2
+        tst     r2, r2
+        bf      9f
+        mov.l   c_err_xfer_e, r2
+        or      r2, r0
+        mov.l   r0, @r1
+9:      rts
+        nop
 
         .align  2
 ! Constants for the routines above (literal loads only reach forward)
+c_err_xfer_e:   .long   0x06000000
 c_auth_frames_e:.long   30 * 60         ! authentication: up to 30 s
 c_cd_auth_e:    .long   CD_AUTH
 c_cd_err_e:     .long   CD_ERR
@@ -447,6 +482,10 @@ cd_read_common:
         mov     #HIRQ_DRDY, r4
         tst     r0, r0
         bf      8f
+        bsr     vbl_wait                ! DRDY can come before the data FIFO has
+        nop                             ! filled: on MiSTer, reads of an empty
+                                        ! FIFO return junk and leave the data
+                                        ! behind for the next transfer
         mov.l   c_cd_data, r1
         mov.l   c_cd_wmode, r0
         mov.l   @r0, r0
@@ -478,6 +517,9 @@ cd_read_common:
         mov     r0, r4
         tst     r0, r0
         bf      8f
+        mov.l   c_sector_words_l, r4    ! all 1024 words moved?
+        bsr     check_xfer
+        nop
         mov.l   c_cd_fad, r1            ! next FAD, one sector fewer left
         mov.l   @r1, r0
         add     #1, r0
