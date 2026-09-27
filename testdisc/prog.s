@@ -26,6 +26,29 @@
         .equ    SYS_MASK_SHADOW,   0x06000348
         .equ    SYS_CHANGE_PRIO,   0x06000280
         .equ    SCU_IST,    0x25FE00A4
+        .equ    SYS_BUP_INIT,      0x06000358
+        .equ    SYS_BUP_WORK,      0x06000354
+
+        ! Backup RAM test buffers (all above this program)
+        .equ    BUP_LIB,    0x06010000      ! 16 KB library area
+        .equ    BUP_WORK,   0x06014000      ! 8 KB work area
+        .equ    BUP_CONF,   0x06016000      ! BupConfig[3]
+        .equ    BUP_STAT,   0x06016010      ! BupStat
+        .equ    BUP_DIRENT, 0x06016040      ! BupDir to write
+        .equ    BUP_DATE,   0x06016080      ! BupDate
+        .equ    BUP_DIRTAB, 0x06016100      ! BupDir[8] from Dir
+        .equ    BUP_DATA,   0x06017000      ! 3000 bytes to save
+        .equ    BUP_BUF,    0x06018000      ! 3000 bytes read back
+        .equ    SAVE_SIZE,  3000
+        .equ    SAVE_BLOCKS, 53             ! 1 + (3000 + 29) / 58
+
+! BUPCALL off: call backup RAM library function at work area + off
+! (r13 = work area, set by t_bupinit)
+        .macro  BUPCALL off
+        mov.l   @(\off, r13), r0
+        jsr     @r0
+        nop
+        .endm
 
 ! SYSCALL addr: call the BIOS service whose pointer is stored at addr.
 ! r14 holds 0x06000200 for the whole program (callee-saved, so the BIOS and
@@ -86,6 +109,7 @@ _start:
 
         .align  2
 c_sysbase:      .long   0x06000200
+c_back:         .long   BACK
 c_green:        .word   0x8000 | (4 << 10) | (20 << 5) | 4
 c_red:          .word   0x8000 | (4 << 10) | (4 << 5) | 20
         .align  2
@@ -96,6 +120,12 @@ tests:
         .long   n_mask,   t_mask
         .long   n_prio,   t_prio
         .long   n_vbl,    t_vblank
+        .long   n_bupi,   t_bupinit
+        .long   n_bupw,   t_bupwrite
+        .long   n_bupr,   t_bupread
+        .long   n_bupd,   t_bupdir
+        .long   n_bupx,   t_bupdelete
+        .long   n_date,   t_date
         .long   0
 
         .align  2
@@ -116,6 +146,18 @@ n_prio:         .asciz  "SCU PRIORITY TABLE"
 n_vbl:          .asciz  "SCU VBLANK IRQ X10"
         .align  2
 n_clock:        .asciz  "CHANGE CLOCK 320"
+        .align  2
+n_bupi:         .asciz  "BUP INIT + STAT"
+        .align  2
+n_bupw:         .asciz  "BUP WRITE 3000 BYTES"
+        .align  2
+n_bupr:         .asciz  "BUP READ + VERIFY"
+        .align  2
+n_bupd:         .asciz  "BUP DIRECTORY"
+        .align  2
+n_bupx:         .asciz  "BUP DELETE"
+        .align  2
+n_date:         .asciz  "BUP SET/GET DATE"
 
         .align  2
 ! ---- tests: return r0 = 0 on pass --------------------------------------
@@ -298,6 +340,379 @@ t_clock:
 9:      bra     fail
         nop
 
+        .align  2
+c_flag:         .long   0x06016F00
+c_count:        .long   0x06016F04
+c_trap_handler: .long   trap_handler
+c_vblank_handler: .long vblank_handler
+c_rte_stub:     .long   0x06000600
+c_shadow:       .long   SYS_MASK_SHADOW
+c_clock_mode:   .long   SYS_CLOCK_MODE
+c_scu_ist:      .long   SCU_IST
+c_mask_all:     .long   0x0000BFFF
+c_mask_vbl:     .long   0x0000BFFE
+c_not_bit12:    .long   0xFFFFEFFF
+c_bit12:        .long   0x00001000
+c_mask_12on:    .long   0x0000AFFF
+c_wait:         .long   0x00800000
+        .align  2
+prio_tab:
+        .long   0x00F0FFFF, 0x00E0FFFE, 0x00D0FFFC, 0x00C0FFF8
+        .long   0x00B0FFF0, 0x00A0FFE0, 0x0090FFC0, 0x0080FF80
+        .long   0x0080FF80, 0x0070FE00, 0x0070FE00, 0x0070FE00
+        .long   0x0070FE00, 0x0070FE00, 0x0070FE00, 0x0070FE00
+        .rept   16
+        .long   0x0070FE00
+        .endr
+
+! ---- backup RAM -----------------------------------------------------------
+
+! BUP_Init, check the work pointer and the device table; format the internal
+! backup RAM only if it reports unformatted; then Stat must succeed.
+t_bupinit:
+        sts.l   pr, @-r15
+        mov.l   c_bup_lib, r4
+        mov.l   c_bup_work, r5
+        mov.l   c_bup_conf, r6
+        SYSCALL SYS_BUP_INIT
+        mov.l   c_bup_work, r13
+        mov.l   c_sys_bup_work, r1
+        mov.l   @r1, r0
+        cmp/eq  r13, r0
+        bf      9f
+        mov.l   c_bup_conf, r1
+        mov.w   @r1, r0
+        cmp/eq  #1, r0
+        bf      9f
+        bsr     bup_stat
+        mov     #0, r5
+        cmp/eq  #2, r0
+        bf      1f
+        mov     #0, r4
+        BUPCALL 0x08                    ! Format
+        bsr     bup_stat
+        mov     #0, r5
+1:      tst     r0, r0
+        bf      9f
+        mov.l   c_bup_stat, r1
+        mov.l   @r1, r0                 ! total size 32768
+        mov.l   c_32k, r2
+        cmp/eq  r2, r0
+        bf      9f
+        mov.l   @(4, r1), r0            ! 512 blocks of 64 bytes
+        mov.l   c_512, r2
+        cmp/eq  r2, r0
+        bf      9f
+        mov.l   @(8, r1), r0
+        cmp/eq  #64, r0
+        bf      9f
+        bra     pass
+        nop
+9:      bra     fail
+        nop
+
+! bup_stat: Stat(0, r5, BUP_STAT) -> r0
+bup_stat:
+        sts.l   pr, @-r15
+        mov     #0, r4
+        mov.l   c_bup_stat, r6
+        BUPCALL 0x0C
+        lds.l   @r15+, pr
+        rts
+        nop
+
+! Write a 3000-byte save; the free block count must drop by 53, and a
+! second write with "do not overwrite" must report that it exists (6).
+t_bupwrite:
+        sts.l   pr, @-r15
+        mov     #0, r4                  ! remove a leftover from an earlier run
+        mova    save_name, r0
+        mov     r0, r5
+        BUPCALL 0x18
+        bsr     bup_stat
+        mov     #0, r5
+        mov.l   c_bup_stat, r1
+        mov.l   @(16, r1), r12          ! r12 = free blocks before
+        mov.l   c_bup_dirent, r1        ! directory entry
+        mov     #36, r2
+        mov     #0, r0
+1:      mov.b   r0, @r1
+        dt      r2
+        bf/s    1b
+        add     #1, r1
+        mov.l   c_bup_dirent, r1
+        mova    save_name, r0
+        mov     r0, r2
+2:      mov.b   @r2+, r0
+        tst     r0, r0
+        bt      3f
+        mov.b   r0, @r1
+        bra     2b
+        add     #1, r1
+3:      mov.l   c_bup_dirent, r1
+        add     #12, r1
+        mova    save_comment, r0
+        mov     r0, r2
+4:      mov.b   @r2+, r0
+        tst     r0, r0
+        bt      5f
+        mov.b   r0, @r1
+        bra     4b
+        add     #1, r1
+5:      mov.l   c_bup_dirent, r1
+        mov     #3, r0                  ! language
+        mov     r1, r2
+        add     #23, r2
+        mov.b   r0, @r2
+        mov.l   c_date_val, r0
+        mov.l   r0, @(24, r1)
+        mov.l   c_save_size, r0
+        mov.l   r0, @(28, r1)
+        mov.l   c_bup_data, r1          ! data: byte i = i * 7 + 3
+        mov.l   c_save_size, r2
+        mov     #3, r0
+6:      mov.b   r0, @r1
+        add     #7, r0
+        dt      r2
+        bf/s    6b
+        add     #1, r1
+        mov     #0, r4
+        mov.l   c_bup_dirent, r5
+        mov.l   c_bup_data, r6
+        mov     #1, r7
+        BUPCALL 0x10                    ! Write
+        tst     r0, r0
+        bf      9f
+        bsr     bup_stat
+        mov     #0, r5
+        mov.l   c_bup_stat, r1
+        mov.l   @(16, r1), r0
+        mov     #SAVE_BLOCKS, r2
+        add     r2, r0
+        cmp/eq  r12, r0
+        bf      9f
+        mov     #0, r4
+        mov.l   c_bup_dirent, r5
+        mov.l   c_bup_data, r6
+        mov     #1, r7
+        BUPCALL 0x10                    ! again, must not overwrite
+        cmp/eq  #6, r0
+        bf      9f
+        mov.l   c_free_before, r1
+        mov.l   r12, @r1
+        bra     pass
+        nop
+9:      bra     fail
+        nop
+
+! Read the save back and compare; Verify must pass, and fail (7) once one
+! byte of the reference data is changed.
+t_bupread:
+        sts.l   pr, @-r15
+        mov.l   c_bup_buf, r1
+        mov.l   c_save_size, r2
+        mov     #0, r0
+1:      mov.b   r0, @r1
+        dt      r2
+        bf/s    1b
+        add     #1, r1
+        mov     #0, r4
+        mova    save_name, r0
+        mov     r0, r5
+        mov.l   c_bup_buf, r6
+        BUPCALL 0x14                    ! Read
+        tst     r0, r0
+        bf      9f
+        mov.l   c_bup_data, r1
+        mov.l   c_bup_buf, r2
+        mov.l   c_save_size, r3
+2:      mov.b   @r1+, r0
+        mov.b   @r2+, r4
+        cmp/eq  r4, r0
+        bf      9f
+        dt      r3
+        bf      2b
+        mov     #0, r4
+        mova    save_name, r0
+        mov     r0, r5
+        mov.l   c_bup_data, r6
+        BUPCALL 0x20                    ! Verify
+        tst     r0, r0
+        bf      9f
+        mov.l   c_bup_data, r1          ! change one byte
+        mov.l   c_1500, r0
+        add     r0, r1
+        mov.b   @r1, r0
+        not     r0, r0
+        mov.b   r0, @r1
+        mov     #0, r4
+        mova    save_name, r0
+        mov     r0, r5
+        mov.l   c_bup_data, r6
+        BUPCALL 0x20
+        mov     r0, r12
+        mov.l   c_bup_data, r1          ! restore it
+        mov.l   c_1500, r0
+        add     r0, r1
+        mov.b   @r1, r0
+        not     r0, r0
+        mov.b   r0, @r1
+        mov     r12, r0
+        cmp/eq  #7, r0
+        bf      9f
+        bra     pass
+        nop
+9:      bra     fail
+        nop
+
+! Directory: the save must be listed with its size, block count, date and
+! language; a table of 0 entries must return minus the number of saves.
+t_bupdir:
+        sts.l   pr, @-r15
+        mov     #0, r4
+        mova    save_name, r0
+        mov     r0, r5
+        mov     #8, r6
+        mov.l   c_bup_dirtab, r7
+        BUPCALL 0x1C
+        cmp/eq  #1, r0
+        bf      9f
+        mov.l   c_bup_dirtab, r1
+        mova    save_name, r0
+        mov     r0, r2
+1:      mov.b   @r2+, r0
+        mov.b   @r1+, r3
+        cmp/eq  r3, r0
+        bf      9f
+        tst     r0, r0
+        bf      1b
+        mov.l   c_bup_dirtab, r1
+        mov.l   @(24, r1), r0
+        mov.l   c_date_val, r2
+        cmp/eq  r2, r0
+        bf      9f
+        mov.l   @(28, r1), r0
+        mov.l   c_save_size, r2
+        cmp/eq  r2, r0
+        bf      9f
+        mov     r1, r2
+        add     #32, r2
+        mov.w   @r2, r0
+        cmp/eq  #SAVE_BLOCKS, r0
+        bf      9f
+        add     #-9, r2                 ! language at 23
+        mov.b   @r2, r0
+        cmp/eq  #3, r0
+        bf      9f
+        mov     #0, r4
+        mova    save_name, r0
+        mov     r0, r5
+        mov     #0, r6
+        mov.l   c_bup_dirtab, r7
+        BUPCALL 0x1C
+        cmp/eq  #-1, r0
+        bf      9f
+        bra     pass
+        nop
+9:      bra     fail
+        nop
+
+! Delete: afterwards Read reports not found (5) and the free block count is
+! back to what it was before the write.
+t_bupdelete:
+        sts.l   pr, @-r15
+        mov     #0, r4
+        mova    save_name, r0
+        mov     r0, r5
+        BUPCALL 0x18
+        tst     r0, r0
+        bf      9f
+        mov     #0, r4
+        mova    save_name, r0
+        mov     r0, r5
+        mov.l   c_bup_buf, r6
+        BUPCALL 0x14
+        cmp/eq  #5, r0
+        bf      9f
+        bsr     bup_stat
+        mov     #0, r5
+        mov.l   c_bup_stat, r1
+        mov.l   @(16, r1), r0
+        mov.l   c_free_before, r1
+        mov.l   @r1, r1
+        cmp/eq  r1, r0
+        bf      9f
+        bra     pass
+        nop
+9:      bra     fail
+        nop
+
+! Dates: SetDate and GetDate against values computed independently
+! (minutes since 1980-01-01 00:00; week 0 = Sunday).
+t_date:
+        sts.l   pr, @-r15
+        mova    date_cases, r0
+        mov     r0, r12
+        mov     #4, r11
+1:      mov     r12, r4                 ! SetDate(fields) == minutes
+        BUPCALL 0x28
+        mov.l   @(8, r12), r1
+        cmp/eq  r1, r0
+        bf      9f
+        mov     r0, r4                  ! GetDate(minutes) == fields
+        mov.l   c_bup_date, r5
+        BUPCALL 0x24
+        mov.l   c_bup_date, r1
+        mov     r12, r2
+        mov     #6, r3
+2:      mov.b   @r1+, r0
+        mov.b   @r2+, r4
+        cmp/eq  r4, r0
+        bf      9f
+        dt      r3
+        bf      2b
+        dt      r11
+        bf/s    1b
+        add     #12, r12
+        bra     pass
+        nop
+9:      bra     fail
+        nop
+
+        .align  2
+date_cases:     ! year-1980, month, day, hour, minute, week, pad; minutes
+        .byte   46, 9, 27, 12, 5, 0, 0, 0
+        .long   24582965                ! 2026-09-27 12:05, Sunday
+        .byte   44, 2, 29, 23, 59, 4, 0, 0
+        .long   23228639                ! 2024-02-29 23:59, Thursday
+        .byte   0, 12, 31, 0, 0, 3, 0, 0
+        .long   525600                  ! 1980-12-31 00:00, Wednesday
+        .byte   47, 3, 1, 6, 30, 1, 0, 0
+        .long   24805830                ! 2027-03-01 06:30, Monday
+        .align  2
+save_name:      .asciz  "OPENBIOSTST"
+        .align  2
+save_comment:   .asciz  "TEST SAVE"
+
+        .align  2
+c_bup_lib:      .long   BUP_LIB
+c_bup_work:     .long   BUP_WORK
+c_bup_conf:     .long   BUP_CONF
+c_bup_stat:     .long   BUP_STAT
+c_bup_dirent:   .long   BUP_DIRENT
+c_bup_date:     .long   BUP_DATE
+c_bup_dirtab:   .long   BUP_DIRTAB
+c_bup_data:     .long   BUP_DATA
+c_bup_buf:      .long   BUP_BUF
+c_sys_bup_work: .long   SYS_BUP_WORK
+c_free_before:  .long   0x06016F08
+c_date_val:     .long   0x01234567
+c_32k:          .long   32768
+c_512:          .long   512
+c_save_size:    .long   SAVE_SIZE
+c_1500:         .long   1500
+
+        .align  2
 pass:
         lds.l   @r15+, pr
         rts
@@ -361,21 +776,6 @@ puts:
         .align  2
 c_map:          .long   MAP
 c_vdp2:         .long   0x25F80000
-c_back:         .long   BACK
-c_flag:         .long   0x06004F00
-c_count:        .long   0x06004F04
-c_trap_handler: .long   trap_handler
-c_vblank_handler: .long vblank_handler
-c_rte_stub:     .long   0x06000600
-c_shadow:       .long   SYS_MASK_SHADOW
-c_clock_mode:   .long   SYS_CLOCK_MODE
-c_scu_ist:      .long   SCU_IST
-c_mask_all:     .long   0x0000BFFF
-c_mask_vbl:     .long   0x0000BFFE
-c_not_bit12:    .long   0xFFFFEFFF
-c_bit12:        .long   0x00001000
-c_mask_12on:    .long   0x0000AFFF
-c_wait:         .long   0x00800000
 c_map_longs:    .word   64 * 32 * 2 / 4
 c_end:          .word   0xFFFF
 
@@ -402,13 +802,4 @@ vdp2_regs:                              ! (register offset, value)
         .word   0x0000, 0x8100          ! TVMD: display on, 320x224
         .word   0xFFFF
 
-        .align  2
-prio_tab:
-        .long   0x00F0FFFF, 0x00E0FFFE, 0x00D0FFFC, 0x00C0FFF8
-        .long   0x00B0FFF0, 0x00A0FFE0, 0x0090FFC0, 0x0080FF80
-        .long   0x0080FF80, 0x0070FE00, 0x0070FE00, 0x0070FE00
-        .long   0x0070FE00, 0x0070FE00, 0x0070FE00, 0x0070FE00
-        .rept   16
-        .long   0x0070FE00
-        .endr
 

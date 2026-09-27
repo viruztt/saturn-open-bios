@@ -402,7 +402,7 @@ call_tab:
         .long   SYS + 0x344, sc_change_scu_mask ! change SCU interrupt mask
         .long   SYS + 0x348, 0xFFFFFFFF         ! SCU interrupt mask shadow
         .long   SYS + 0x354, 0
-        .long   SYS + 0x358, sc_nop             ! backup RAM init (milestone 7)
+        .long   SYS + 0x358, bup_init           ! backup RAM library init (bup.s)
         .long   0
 
 ! Default priorities for SCU vectors 0x40-0x5F: SR while the handler runs,

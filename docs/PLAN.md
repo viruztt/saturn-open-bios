@@ -50,6 +50,14 @@ disassembled.
   The BIOS work area and boot stack moved into the system area
   (0x06000D00-0x060017FF, stack below 0x06002000), so the whole of Work RAM
   High above IP.BIN is loadable.
+- Stage 7 done in Yabause: backup RAM library in `src/bup.s`, reached
+  through BUP_Init (0x06000358), which fills the function table in the game's
+  work area and stores its address at 0x06000354. SelPart, Format, Stat,
+  Write, Read, Delete, Dir, Verify, GetDate and SetDate work on the internal
+  backup RAM in the standard on-chip format (block list followed through the
+  listed blocks). The test disc writes, reads, verifies, lists and deletes a
+  3000-byte, 53-block save and checks dates against independently computed
+  values (`docs/stage7-bup.png`, all 12 service tests OK).
 
 ## Test loop
 | Target | Custom BIOS accepted? | Notes |
@@ -86,7 +94,7 @@ disassembled.
 4. ~~CD block driver: status, TOC, sector reads~~ (no-disc handling and real-drive timeouts still open)
 5. ~~IP.BIN load + checks, jump to game~~ (own test disc; next: third-party homebrew discs)
 6. ~~System call table + interrupt handling~~ (needs checking against real SGL/SBL games)
-7. Backup RAM library, SMPC clock / peripheral helpers
+7. ~~Backup RAM library~~ (internal device; cartridge RAM later), SMPC peripheral helpers
 8. MiSTer + real-hardware testing; boot menu, CD player
 9. Mednafen: upstream a setting to allow a custom BIOS
 
@@ -95,6 +103,11 @@ disassembled.
   call addresses (priority table at 0x06000C00, boot work area
   0x06000D00-0x060017FF) is our own choice; check it against real games.
 - ChangeSystemClock skips the standby/NMI handshake of the real hardware.
+- Backup RAM: only the internal device; cartridge RAM (device 1) reports
+  "not connected". Write deletes an existing save before checking for space
+  (as Yabause's HLE BIOS does). The BupDir language byte is at offset 23
+  (SBL layout); Yabause's HLE uses 22. Save format not yet checked against a
+  dump from real hardware. BUP_Init ignores the library area.
 - SetScuInterruptMask writes the SCU mask from the slave CPU too (Yabause
   only does it on the master).
 - The first read file is loaded whole; sizes above the CD buffer (200
@@ -117,7 +130,7 @@ compared on 2026-09-27. Values Yabause copies from Sega's ROM are not used.
 | Stack at jump | from IP.BIN header (master stack), 0x06002000 if zero | same | 5, done |
 | CD block | HIRQ 0xFC1, CR1-4 = status report, disc authenticated | authenticated, TOC read, IP sector read | 4, done; exact HIRQ at 5 |
 | SMPC | last command INTBACK | - | 7 |
-| System calls 0x06000210-0x06000358, SCU dispatch 0x06000100-0x0600017F, 0x06000A00 table | BIOS service pointers | same; backup RAM calls 0x06000358/0x06000380-0x060003AC not yet | 6 done, 7 |
+| System calls 0x06000210-0x06000358, SCU dispatch 0x06000100-0x0600017F, 0x06000A00 table | BIOS service pointers | same, backup RAM library via 0x06000358 | 6, 7 done |
 
 ## Toolchain
 - Now: Debian/Ubuntu `binutils-sh-elf` (assembler only).
