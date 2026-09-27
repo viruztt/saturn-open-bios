@@ -62,3 +62,10 @@ run-image-diag: diag
 	test -n "$(IMAGE)"
 	BIOS=build/diag/saturn-open-bios.bin sh tools/run-yabause.sh "$(IMAGE)" build/image.png
 .PHONY: run-image run-image-diag
+
+# Play a disc image in a normal Yabause window (WSLg on Windows):
+# make play IMAGE=/path/game.cue
+play: build/saturn-open-bios.bin
+	test -n "$(IMAGE)"
+	yabause -a -b build/saturn-open-bios.bin -i "$(IMAGE)"
+.PHONY: play
