@@ -132,6 +132,11 @@ disassembled.
   waiting for DRDY passed at once and an empty data port was read. The BIOS
   now clears DRDY before Get TOC and before each Get Then Delete, and treats
   a rejected Get Then Delete (status 0xFF) as "not there yet".
+- Tenth MiSTer run: IP.BIN load stopped after its first sector: the second
+  Get Then Delete was accepted but DRDY never came (CD_ERR 03000FD5). After
+  End Data Transfer a real CD block deletes the sectors and signals EHST;
+  the next command must wait for that. The BIOS now clears EHST before End
+  Data Transfer and waits for it afterwards.
 - Debug tools: fatal exceptions (vectors 4/6/9/10) show a crash screen with
   vector, PC, SR, PR, SP and the 32 bytes around PC; `make diag` builds a diagnostics BIOS
   (`src/diag.s`) that counts system calls, samples the game's PC on VBlank,

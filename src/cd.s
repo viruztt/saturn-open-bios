@@ -571,7 +571,10 @@ cd_read:
         dt      r3
         bf/s    16b
         add     #4, r1
-        mova    cmd_endxfer, r0
+        mov.l   c_cd_hirq, r1           ! End Data Transfer; with Get Then
+        mov.l   c_not_ehst, r0          ! Delete the CD block then deletes the
+        mov.w   r0, @r1                 ! sectors and signals EHST when done:
+        mova    cmd_endxfer, r0         ! wait for it before the next command
         bsr     cd_cmdt
         mov     r0, r4
         tst     r0, r0
@@ -579,6 +582,11 @@ cd_read:
         mov.l   c_sector_words_l, r4    ! all 1024 words moved?
         bsr     check_xfer
         nop
+        mov.l   c_hirq_ehst, r4
+        bsr     cd_wait
+        nop
+        tst     r0, r0
+        bf      8f
         mov.l   c_cd_fad, r1            ! next FAD, one sector fewer left
         mov.l   @r1, r0
         add     #1, r0
@@ -800,6 +808,8 @@ c_cd_sirej:     .long   CD_SIREJ
 c_cd_dropped:   .long   CD_DROPPED
 c_cd_freeblk:   .long   CD_FREEBLK
 c_not_drdy:     .long   0xFFFD          ! HIRQ write: clear DRDY only
+c_not_ehst:     .long   0xFF7F          ! HIRQ write: clear EHST only
+c_hirq_ehst:    .long   0x0080          ! HIRQ EHST: host transfer finished
 c_toc_words_l:  .long   0xCC
 c_fad150_l:     .long   150
 c_sector_bytes_l: .long 2048
