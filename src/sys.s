@@ -340,9 +340,9 @@ sc_cd_init1:
 scu_entries:
         .irp    v, 0x40,0x41,0x42,0x43,0x44,0x45,0x46,0x47,0x48,0x49,0x4A,0x4B,0x4C,0x4D,0x4E,0x4F,0x50,0x51,0x52,0x53,0x54,0x55,0x56,0x57,0x58,0x59,0x5A,0x5B,0x5C,0x5D,0x5E,0x5F
         mov.l   r0, @-r15
-        mov     #\v, r0
         bra     scu_dispatch
-        nop
+        mov     #\v, r0
+        nop                             ! (keeps each entry 8 bytes)
         .endr
 
 scu_dispatch:
@@ -369,8 +369,7 @@ scu_dispatch:
         mov.l   r5, @-r15
         mov.l   r6, @-r15
         mov.l   r7, @-r15
-        sts.l   pr, @-r15
-        stc.l   gbr, @-r15
+        sts.l   pr, @-r15               ! (GBR is not saved: handlers keep it)
         sts.l   mach, @-r15
         sts.l   macl, @-r15
         mov.l   c_mask_shadow, r1
@@ -402,7 +401,6 @@ scu_dispatch:
         mov.l   r2, @r1
         lds.l   @r15+, macl
         lds.l   @r15+, mach
-        ldc.l   @r15+, gbr
         lds.l   @r15+, pr
         mov.l   @r15+, r7
         mov.l   @r15+, r6
