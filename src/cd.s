@@ -425,7 +425,9 @@ cd_read:
         bsr     cd_cmdt
         mov     r0, r4
         tst     r0, r0
-        bf      8f
+        bt      0f
+97:     bra     8f                      ! error exit within reach of the
+        nop                             ! conditional branches below
 0:      mov.l   c_idle_frames, r5       ! give the drive up to 3 s to be idle
         bsr     cd_ready_quiet          ! (not busy / seeking), then send Play
         nop                             ! anyway: a new Play is also what gets
@@ -434,22 +436,22 @@ cd_read:
         bsr     cd_cmdt
         mov     r0, r4
         tst     r0, r0
-        bf      8f
+        bf      97b
         mova    cmd_cdconn, r0          ! drive -> filter 0 -> partition 0
         bsr     cd_cmdt
         mov     r0, r4
         tst     r0, r0
-        bf      8f
+        bf      97b
         bsr     cd_play_rest            ! Play CD_LEFT sectors from CD_FAD
         nop
         tst     r0, r0
-        bf      8f
+        bf      97b
 1:      mov.l   c_polls_l, r11
 2:      mova    cmd_secnum, r0          ! wait until a sector is buffered
         bsr     cd_cmdt
         mov     r0, r4
         tst     r0, r0
-        bf      8f
+        bf      97b
         mov.l   c_cd_resp, r1
         mov.w   @(6, r1), r0            ! CR4 = sectors in partition 0
         tst     r0, r0
@@ -504,7 +506,7 @@ cd_read:
         bsr     cd_cmdt
         mov     r0, r4
         tst     r0, r0
-        bf      8f
+        bf      97b
         mov.l   c_cd_resp, r1
         mov.w   @r1, r0                 ! CR1: status, FAD[23:16]
         extu.w  r0, r3
@@ -638,8 +640,10 @@ cd_read:
         add     #-1, r0
         mov.l   r0, @r1
         tst     r0, r0
-        bf      1b
-        bra     0b
+        bt      96f
+        bra     1b                      ! (out of reach of bf)
+        nop
+96:     bra     0b
         nop
 9:      mov     #0, r0
 8:      add     #4, r15                 ! drop the retry counter
