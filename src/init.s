@@ -49,9 +49,11 @@ cpu_init:
         sts.l   pr, @-r15               ! (stack not used yet: WRAM not
         bsr     poke_w                  !  cleared, but pushes are harmless)
         nop
-        mova    bsc_tab_l, r0
+        .ifndef NOBSC                   ! (NOBSC test builds: bus state
+        mova    bsc_tab_l, r0           !  controller left at reset values)
         bsr     poke_l
         mov     r0, r4
+        .endif
         bsr     cpu_vectors
         nop
         mova    vec_tab_l, r0
@@ -88,9 +90,11 @@ slave_start:
         .endif
         bsr     cpu_vectors
         nop
-        mova    bsc_tab_l, r0
+        .ifndef NOBSC                   ! (NOBSC test builds: bus state
+        mova    bsc_tab_l, r0           !  controller left at reset values)
         bsr     poke_l
         mov     r0, r4
+        .endif
         mova    vec_tab_l, r0
         bsr     poke_l
         mov     r0, r4
