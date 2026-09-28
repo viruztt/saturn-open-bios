@@ -92,7 +92,7 @@ slave_start:
         bsr     cpu_vectors
         nop
         .ifndef NOBSC                   ! (NOBSC test builds: bus state
-        mova    bsc_tab_l, r0           !  controller left at reset values)
+        mova    bsc_tab_s, r0           !  controller left at reset values)
         bsr     poke_l
         mov     r0, r4
         .endif
@@ -165,6 +165,14 @@ bsc_tab_l:
         .long   0xFFFFFFEC, 0xA55A0078  ! MCR: SDRAM timing, refresh on
         .long   0xFFFFFFF8, 0xA55A0036  ! RTCOR: refresh interval
         .long   0xFFFFFFF0, 0xA55A0008  ! RTCSR: refresh timer clock
+        .long   0
+! The slave's: the same, but no refresh (the master refreshes the SDRAM)
+        .align  2
+bsc_tab_s:
+        .long   0xFFFFFFE0, 0xA55A03F1
+        .long   0xFFFFFFE4, 0xA55A00FC
+        .long   0xFFFFFFE8, 0xA55A5555
+        .long   0xFFFFFFEC, 0xA55A0070
         .long   0
 
 
