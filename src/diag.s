@@ -88,9 +88,11 @@ diag_w_\service:
 
 ! diag_postmortem: called at power-on/reset right after the console is up,
 ! before anything touches Work RAM. If a game had been started, show the
-! post-mortem page (row 1: VBlanks, ticks; rows 2-3: PC ring; rows 5-8:
-! call counters in table order; rows 10-25: the 256 bytes below the IP.BIN
-! master stack top, 4 longwords per row, lowest address first) and halt.
+! post-mortem page (row 1: VBlanks, ticks, last sampled PC and PR; rows 2-3:
+! PC ring; rows 5-8: call counters in table order; rows 10-13: the 64 bytes
+! below the IP.BIN master stack top; rows 15-26: the 192 bytes below
+! 0x060C8000, where Virtua Cop's main program puts its stack; 4 longwords
+! per row, lowest address first) and halt.
 ! The marker is cleared first, so the next reset boots normally. Uses no
 ! stack (the game's may be where ours would go).
         .align  2
@@ -121,6 +123,16 @@ diag_postmortem:
         mov.l   p_pm_puthex, r0
         jsr     @r0
         mov     #1, r6
+        mov.l   @(4, r8), r4            ! last sampled PC and PR
+        mov     #20, r5
+        mov.l   p_pm_puthex, r0
+        jsr     @r0
+        mov     #1, r6
+        mov.l   @(8, r8), r4
+        mov     #29, r5
+        mov.l   p_pm_puthex, r0
+        jsr     @r0
+        mov     #1, r6
         mov.l   c_pm_ring, r8           ! rows 2-3: PC ring (8)
         mov     #8, r9
         mov     #2, r10
@@ -141,10 +153,22 @@ diag_postmortem:
         mov.l   p_pm_puthex, r0
         jsr     @r0
         mov     #0, r6
-        mov.w   c_pm_256, r0
+        mov     #64, r0                 ! rows 10-13: 64 bytes below it
         sub     r0, r8
-        mov     #64, r9
+        mov     #16, r9
         mov     #10, r10
+        bsr     pm_dump
+        nop
+        mov.l   c_pm_sp2, r8            ! row 14: second window, the stack
+        mov     r8, r4                  ! top Virtua Cop's main program sets
+        mov     #25, r5                 ! for itself (0x060C8000); rows
+        mov.l   p_pm_puthex, r0         ! 15-26: the 192 bytes below it
+        jsr     @r0
+        mov     #14, r6
+        mov.w   c_pm_192, r0
+        sub     r0, r8
+        mov     #48, r9
+        mov     #15, r10
         bsr     pm_dump
         nop
 3:      bra     3b
@@ -181,8 +205,9 @@ c_pm_calls:     .long   DIAG_CALLS
 c_pm_ip_sp:     .long   0x260020F0
 c_pm_def_sp:    .long   0x06002000
 p_pm_puts:      .long   con_puts
+c_pm_sp2:       .long   0x060C8000
 p_pm_puthex:    .long   con_puthex
-c_pm_256:       .word   256
+c_pm_192:       .word   192
         .align  2
 t_pm:           .asciz  "Post-mortem  stack top"
         .align  2
