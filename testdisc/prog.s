@@ -109,8 +109,9 @@ _start:
 6:      bra     6b
         nop
 
-! play_audio: on the BIN/CUE test disc, play track 2 (a 440 Hz / 660 Hz test
-! tone) on repeat through the CD block, leaving the sound mixer as the BIOS
+! play_audio: on the BIN/CUE test disc, play from track 2 to the end of the
+! disc on repeat (track 2: 440 Hz / 660 Hz, track 3: 330 Hz / 550 Hz tones)
+! through the CD block, leaving the sound mixer as the BIOS
 ! set it up. Clicks or crackling then come from that setup, not from a
 ! game's sound driver. Prints whether the CD block took the command.
 play_audio:
@@ -128,9 +129,9 @@ play_audio:
         mov.w   r0, @(0, r1)
         mov.w   c_track2, r0            ! from track 2 index 1
         mov.w   r0, @(4, r1)
-        mov.w   c_play_cr3, r0          ! repeat forever, end: track 2
-        mov.w   r0, @(8, r1)
-        mov.w   c_track2, r0
+        mov.w   c_play_cr3, r0          ! repeat forever, end: 0 = end of
+        mov.w   r0, @(8, r1)            ! the disc
+        mov     #0, r0
         mov.w   r0, @(12, r1)
         mov.l   c_cd_wait, r3
 1:      mov.w   @r2, r0
@@ -158,7 +159,7 @@ c_play_cr1:     .word   0x1000
 c_track2:       .word   0x0201
 c_play_cr3:     .word   0x0F00
         .align  2
-s_audio:        .asciz  "CD AUDIO TONE L440 R660"
+s_audio:        .asciz  "CD AUDIO TRACKS 2+3"
 
         .align  2
 c_sysbase:      .long   0x06000200

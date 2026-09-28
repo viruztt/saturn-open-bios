@@ -1,16 +1,18 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-2.0-or-later
-"""Turn a 2048-byte-sector test disc image into a BIN/CUE with a CD-DA track.
+"""Turn a 2048-byte-sector test disc image into a BIN/CUE with CD-DA tracks.
 
 Usage: mkaudiodisc.py IN.ISO OUT.BIN OUT.CUE
 
-Also writes OUT-pregap.cue: the same image with track 2 given as a PREGAP
-line plus INDEX 01, the layout many disc dumps use.
+Also writes OUT-pregap.cue: the same image described the way many disc dumps
+do it: track 2 as a PREGAP line (not stored in the file) plus INDEX 01,
+later tracks with INDEX 00 and INDEX 01 (pregap stored in the file).
 
-Track 1 is the data (MODE1/2352 with sync, header, EDC and ECC). Track 2 is
-a generated test tone: 2 seconds of silence (index 0), then 30 seconds of
-a 440 Hz sine on the left channel and 660 Hz on the right. A clean tone
-makes clicks and crackling easy to hear.
+Track 1 is the data (MODE1/2352 with sync, header, EDC and ECC). Tracks 2
+and 3 are generated test tones, each 2 seconds of silence (index 0) and
+then 20 seconds of sine waves: track 2 440 Hz left / 660 Hz right, track 3
+330 Hz left / 550 Hz right. Clean tones make clicks and crackling easy to
+hear, and the pitch tells which track is playing.
 """
 import math
 import os
@@ -18,7 +20,7 @@ import struct
 import sys
 
 RAW = 2352
-TONE_SECONDS = 30
+TONE_SECONDS = 20
 PREGAP = 150                                    # 2 seconds of silence
 
 
@@ -103,12 +105,11 @@ def mode1_sector(lba, data):
     return bytes(s)
 
 
-def tone_sectors():
+def tone_sectors(left_hz, right_hz):
     out = bytearray(RAW * PREGAP)
-    frames = TONE_SECONDS * 44100
-    for n in range(frames):
-        left = int(8000 * math.sin(2 * math.pi * 440 * n / 44100))
-        right = int(8000 * math.sin(2 * math.pi * 660 * n / 44100))
+    for n in range(TONE_SECONDS * 44100):
+        left = int(8000 * math.sin(2 * math.pi * left_hz * n / 44100))
+        right = int(8000 * math.sin(2 * math.pi * right_hz * n / 44100))
         out += struct.pack("<hh", left, right)
     out += bytes(-len(out) % RAW)
     return bytes(out)
@@ -121,24 +122,31 @@ def msf(sectors):
 def main(iso_path, bin_path, cue_path):
     iso = open(iso_path, "rb").read()
     count = len(iso) // 2048
+    track2 = tone_sectors(440, 660)
+    track3 = tone_sectors(330, 550)
+    t3 = count + len(track2) // RAW             # track 3 pregap start
     with open(bin_path, "wb") as f:
         for lba in range(count):
             f.write(mode1_sector(lba, iso[lba * 2048:(lba + 1) * 2048]))
-        f.write(tone_sectors())
+        f.write(track2)
+        f.write(track3)
     name = os.path.basename(bin_path)
+    track3_cue = ("  TRACK 03 AUDIO\n    INDEX 00 %s\n    INDEX 01 %s\n"
+                  % (msf(t3), msf(t3 + PREGAP)))
     with open(cue_path, "w", newline="\r\n") as f:
         f.write('FILE "%s" BINARY\n' % name)
         f.write("  TRACK 01 MODE1/2352\n    INDEX 01 00:00:00\n")
         f.write("  TRACK 02 AUDIO\n    INDEX 00 %s\n    INDEX 01 %s\n"
                 % (msf(count), msf(count + PREGAP)))
-    # The same image with track 2 described the way many disc dumps do it:
-    # a PREGAP line (2 seconds not stored in the file) and INDEX 01 only.
-    # The stored silence then counts as the end of track 1.
+        f.write(track3_cue)
+    # Dump layout: the stored silence before track 2 counts as the end of
+    # track 1, and track 2 gets 2 more seconds (PREGAP) that are not stored.
     with open(cue_path[:-4] + "-pregap.cue", "w", newline="\r\n") as f:
         f.write('FILE "%s" BINARY\n' % name)
         f.write("  TRACK 01 MODE1/2352\n    INDEX 01 00:00:00\n")
         f.write("  TRACK 02 AUDIO\n    PREGAP 00:02:00\n    INDEX 01 %s\n"
                 % msf(count + PREGAP))
+        f.write(track3_cue)
 
 
 if __name__ == "__main__":
