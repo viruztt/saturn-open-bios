@@ -153,8 +153,9 @@ play_audio:
         bf      2f
         dt      r3
         bf      1b
-        bra     3f
         mova    s_fail, r0
+        bra     3f
+        nop
 2:      mova    s_ok, r0
 3:      mov     r0, r4
         mov     #28, r5

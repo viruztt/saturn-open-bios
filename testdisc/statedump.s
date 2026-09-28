@@ -135,7 +135,8 @@ _start:
         nop
         bra     15b
         nop
-16:     bra     16b
+
+16:     bra     page3
         nop
 
 ! vblank: wait for the start of the next VBlank. Clobbers r0, r1.
@@ -222,6 +223,10 @@ c_sf:           .long   0x20100063
 c_comreg:       .long   0x2010001F
 c_page_wait:    .word   360
 
+
+        .align  2
+t_labels:       .long   l_a_ent, l_a_sr, l_a_mask, l_a_sp
+                .long   l_b_ent, l_b_sr, l_b_mask, l_b_sp, 0
         .align  2
 slave_labels:   .long   l_flag, l_sr, l_vbr, l_gbr, l_r15, 0
 
@@ -287,6 +292,7 @@ p_vdp2_init:    .long   vdp2_init
 p_con_puts:     .long   con_puts
 p_con_puthex:   .long   con_puthex
 
+
         .align  2
 cpu_labels:     .long   l_sr, l_vbr, l_gbr, l_r15, 0
 
@@ -349,6 +355,24 @@ s_title:        .asciz  "POST-BIOS STATE"
 s_title2:       .asciz  "SLAVE STATE AFTER SSHON"
         .align  2
 l_flag:         .asciz  "STARTED"
+        .align  2
+s_title3:       .asciz  "SCU HANDLER: SR, MASK, SP"
+        .align  2
+l_a_ent:        .asciz  "A ENTRY"
+        .align  2
+l_a_sr:         .asciz  "A SR"
+        .align  2
+l_a_mask:       .asciz  "A MASK"
+        .align  2
+l_a_sp:         .asciz  "A SP"
+        .align  2
+l_b_ent:        .asciz  "B ENTRY"
+        .align  2
+l_b_sr:         .asciz  "B SR"
+        .align  2
+l_b_mask:       .asciz  "B MASK"
+        .align  2
+l_b_sp:         .asciz  "B SP"
         .align  2
 l_vdma0:        .asciz  "VDMA0"
         .align  2
@@ -457,3 +481,152 @@ l_cr2:          .asciz  "CR2"
 l_mask:         .asciz  "MASK348"
         .align  2
 l_clock:        .asciz  "CLK324"
+
+        .align  2
+! Page 3: how the BIOS runs an SCU interrupt handler. For two priority
+! table entries for VBlank-IN (vector 0x40), install a handler with the
+! BIOS services, unmask VBlank-IN, and let the handler record SR, the
+! BIOS mask variable (0x06000348), R15 and SCU IST while it runs.
+page3:
+        mov.w   c_page_wait3, r8
+17:     bsr     vblank3
+        nop
+        dt      r8
+        bf      17b
+        mov.l   c_tbuf, r11             ! r11 = results
+        mov.l   c_entry_a, r4           ! test A: the game's value
+        bsr     int_test
+        nop
+        mov.l   c_entry_b, r4           ! test B: another level and mask
+        bsr     int_test
+        add     #16, r11
+        mov.l   p_vdp2_init3, r0
+        jsr     @r0
+        nop
+        mov.l   p_title3, r4
+        mov     #1, r5
+        mov.l   p_con_puts3, r0
+        jsr     @r0
+        mov     #0, r6
+        mov.l   c_tbuf, r12
+        mov.l   p_t_labels, r13
+        mov     #0, r10
+18:     mov.l   @r13+, r4
+        tst     r4, r4
+        bt      19f
+        bsr     show
+        nop
+        bra     18b
+        nop
+19:     bra     19b
+        nop
+
+! int_test: r4 = priority entry for vector 0x40, r11 = where to record
+! (entry, SR, mask variable, R15; handler flag separately).
+int_test:
+        sts.l   pr, @-r15
+        mov.l   r4, @r11                ! the entry tested
+        mov.l   r4, @-r15
+        mov.l   c_sys_setmask, r0       ! mask every SCU interrupt
+        mov.l   @r0, r0
+        mov.l   c_ffff, r4
+        jsr     @r0
+        nop
+        mov.l   c_ptab, r1              ! priority table: 0x00F0FFFF each,
+        mov.l   c_defprio, r0           ! the test entry for 0x40
+        mov     #32, r2
+1:      mov.l   r0, @r1
+        dt      r2
+        bf/s    1b
+        add     #4, r1
+        mov.l   c_ptab, r1
+        mov.l   @r15+, r0
+        mov.l   r0, @r1
+        mov.l   c_ptab, r4
+        mov.l   c_sys_prio, r0
+        mov.l   @r0, r0
+        jsr     @r0
+        nop
+        mov.l   c_sys_setint, r0        ! SetScuInterrupt(0x40, handler)
+        mov.l   @r0, r0
+        mov     #0x40, r4
+        mov.l   p_handler, r5
+        jsr     @r0
+        nop
+        mov.l   c_flag, r1
+        mov     #0, r0
+        mov.l   r0, @r1
+        mov.l   c_hres, r1              ! handler writes here, copied below
+        mov.l   r11, @r1
+        ldc     r0, sr                  ! SR = 0
+        mov.l   c_sys_setmask, r0       ! unmask VBlank-IN only
+        mov.l   @r0, r0
+        mov.l   c_fffe, r4
+        jsr     @r0
+        nop
+        mov.l   c_twait, r2
+2:      mov.l   c_flag, r1
+        mov.l   @r1, r0
+        tst     r0, r0
+        bf      3f
+        dt      r2
+        bf      2b
+3:      mov.l   c_sys_setmask, r0       ! mask everything again
+        mov.l   @r0, r0
+        mov.l   c_ffff, r4
+        jsr     @r0
+        nop
+        lds.l   @r15+, pr
+        rts
+        nop
+
+! handler: runs from the BIOS's dispatcher for VBlank-IN. Records SR, the
+! mask variable, R15 at [c_hres] + 4.., sets the flag.
+        .align  2
+handler:
+        mov.l   c_hres, r1
+        mov.l   @r1, r1
+        stc     sr, r0
+        mov.l   r0, @(4, r1)
+        mov.l   c_mask348, r0
+        mov.l   @r0, r0
+        mov.l   r0, @(8, r1)
+        mov.l   r15, @(12, r1)
+        mov.l   c_flag, r1
+        mov     #1, r0
+        rts
+        mov.l   r0, @r1
+
+vblank3:
+        mov.l   c_tvstat3, r1
+1:      mov.w   @r1, r0
+        tst     #8, r0
+        bf      1b
+2:      mov.w   @r1, r0
+        tst     #8, r0
+        bt      2b
+        rts
+        nop
+
+        .align  2
+c_tbuf:         .long   0x26082000
+c_hres:         .long   0x26082100
+c_flag:         .long   0x26082104
+c_ptab:         .long   0x26082200
+c_entry_a:      .long   0x0000E1DB
+c_entry_b:      .long   0x00A0FFFE
+c_defprio:      .long   0x00F0FFFF
+c_ffff:         .long   0x0000FFFF
+c_fffe:         .long   0x0000FFFE
+c_sys_setmask:  .long   0x06000340
+c_sys_prio:     .long   0x06000280
+c_sys_setint:   .long   0x06000300
+c_mask348:      .long   0x26000348
+p_handler:      .long   handler
+c_twait:        .long   0x00400000
+c_tvstat3:      .long   0x25F80004
+p_vdp2_init3:   .long   vdp2_init
+p_con_puts3:    .long   con_puts
+p_title3:       .long   s_title3
+p_t_labels:     .long   t_labels
+c_page_wait3:   .word   360
