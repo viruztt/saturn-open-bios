@@ -186,6 +186,7 @@ tests:
         .long   n_bupx,   t_bupdelete
         .long   n_date,   t_date
         .long   n_cart,   t_bupcart
+        .long   n_ram,    t_ramcart
         .long   0
 
         .align  2
@@ -222,6 +223,8 @@ n_bupx:         .asciz  "BUP DELETE"
 n_date:         .asciz  "BUP SET/GET DATE"
         .align  2
 n_cart:         .asciz  "BUP CARTRIDGE"
+        .align  2
+n_ram:          .asciz  "RAM CART ID"
 
         .align  2
 ! ---- tests: return r0 = 0 on pass --------------------------------------
@@ -1003,4 +1006,102 @@ vdp2_regs:                              ! (register offset, value)
         .word   0x0000, 0x8100          ! TVMD: display on, 320x224
         .word   0xFFFF
 
+        .align  2
+! RAM expansion cartridge: show the cartridge ID byte (0x24FFFFFF); for
+! 0x5A (8 Mbit: two 512 KB halves at 0x22400000 and 0x22600000) or 0x5C
+! (32 Mbit: 4 MB from 0x22400000) write a pattern to every 4 KB of the RAM,
+! then read it all back. Emulators may not provide the ID byte: then, if
+! the first 512 KB hold a pattern, that much is tested ("?" after the ID).
+! Returns 2 (NONE) without a RAM cartridge.
+t_ramcart:
+        sts.l   pr, @-r15
+        mov.l   c_cart_id, r1
+        mov.b   @r1, r4
+        extu.b  r4, r4
+        mov     r4, r12                 ! r12 = ID
+        mov     #18, r5
+        bsr     puthex
+        mov     r9, r6
+        mov.l   c_ram_base, r7         ! r7 = base, r11 = size
+        mov     r12, r0
+        cmp/eq  #0x5C, r0
+        bf      1f
+        mov.l   c_ram_4m, r11
+        bra     5f
+        nop
+1:      cmp/eq  #0x5A, r0
+        bf      2f
+        mov.l   c_ram_512k, r11         ! 1 MB: test both halves
+        bsr     ram_test
+        nop
+        tst     r0, r0
+        bf      9f
+        mov.l   c_ram_half2, r7
+        bra     5f
+        nop
+2:      mov.l   c_ram_probe, r0         ! no ID: RAM there anyway?
+        mov.l   r0, @r7
+        mov.l   @r7, r1
+        cmp/eq  r0, r1
+        bf      8f
+        mova    s_q, r0
+        mov     r0, r4
+        mov     #26, r5
+        bsr     puts
+        mov     r9, r6
+        mov.l   c_ram_512k, r11
+5:      bsr     ram_test
+        nop
+        tst     r0, r0
+        bf      9f
+        bra     pass
+        nop
+8:      lds.l   @r15+, pr               ! no RAM cartridge
+        rts
+        mov     #2, r0
+9:      bra     fail
+        nop
 
+! ram_test: r7 = base, r11 = size. Write base + offset ^ pattern to every
+! 4 KB, then check. r0 = 0 if all read back. Clobbers r1-r3.
+ram_test:
+        mov.l   c_ram_pat, r3
+        mov     #0, r1
+1:      mov     r7, r2
+        add     r1, r2
+        mov     r2, r0
+        xor     r3, r0
+        mov.l   r0, @r2
+        mov.w   c_ram_step, r0
+        add     r0, r1
+        cmp/hs  r11, r1
+        bf      1b
+        mov     #0, r1
+2:      mov     r7, r2
+        add     r1, r2
+        mov     r2, r0
+        xor     r3, r0
+        mov.l   @r2, r2
+        cmp/eq  r0, r2
+        bf      9f
+        mov.w   c_ram_step, r0
+        add     r0, r1
+        cmp/hs  r11, r1
+        bf      2b
+        rts
+        mov     #0, r0
+9:      rts
+        mov     #1, r0
+
+        .align  2
+c_cart_id:      .long   0x24FFFFFF
+c_ram_base:     .long   0x22400000
+c_ram_half2:    .long   0x22600000
+c_ram_512k:     .long   0x00080000
+c_ram_4m:       .long   0x00400000
+c_ram_probe:    .long   0x12345678
+c_ram_pat:      .long   0x5AA5C33C
+c_ram_step:     .word   0x1000
+        .align  2
+s_q:            .asciz  "?"
+        .align  2
