@@ -12,6 +12,8 @@
 !   0x06000400-0x060005FF  slave vector table
 !   0x06000600             "rte" stub (default CPU vector)
 !   0x06000610             "rts" stub (default SCU user handler)
+!   0x06000620-0x060008FF  SCU interrupt entries and dispatcher (copied
+!                          from ROM by sys_init; runs from Work RAM)
 !   0x06000900 + 4*vector  SCU user handlers, vectors 0x40-0x5F
 !   0x06000B00-0x06000B1F  semaphores (one byte each)
 !   0x06000C00-0x06000C7F  SCU interrupt priority table (32 longwords:
@@ -40,6 +42,7 @@
         .equ    SYS,        0x26000000      ! system area, cache-through
         .equ    RTE_STUB,   0x06000600
         .equ    RTS_STUB,   0x06000610
+        .equ    SCU_RAM,    0x06000620      ! copy of scu_entries..scu_block_end
         .equ    USER_TAB,   SYS + 0xA00     ! = 0x06000900 + 4 * 0x40
         .equ    SEMAPHORES, SYS + 0xB00
         .equ    PRIO_TAB,   SYS + 0xC00
@@ -78,14 +81,21 @@ sys_init:
         dt      r2
         bf/s    3b
         add     #4, r1
-        mova    prio_default, r0        ! default priorities
-        mov     r0, r1
+        mov.l   p_prio_default, r1      ! default priorities
         mov.l   c_prio_tab, r2
         mov     #32, r3
 4:      mov.l   @r1+, r0
         mov.l   r0, @r2
         dt      r3
         bf/s    4b
+        add     #4, r2
+        mov.l   c_blk_src, r1           ! the SCU entries and dispatcher run
+        mov.l   c_blk_dst, r2           ! from Work RAM (a copy), not from the
+        mov.l   c_blk_longs, r3         ! slow ROM bus
+6:      mov.l   @r1+, r0
+        mov.l   r0, @r2
+        dt      r3
+        bf/s    6b
         add     #4, r2
         mov     #0x40, r4               ! SCU vectors -> dispatcher entries
 5:      bsr     sys_default_vector
@@ -420,7 +430,11 @@ c_rts_nop:      .long   0x000B0009      ! rts; nop
 c_rts_stub:     .long   RTS_STUB
 c_rte_stub:     .long   RTE_STUB
 c_crash:        .long   crash_entries
-c_entries:      .long   scu_entries
+c_blk_src:      .long   scu_entries
+p_prio_default: .long   prio_default
+c_blk_dst:      .long   SCU_RAM + 0x20000000
+c_blk_longs:    .long   (scu_block_end - scu_entries + 3) / 4
+c_entries:      .long   SCU_RAM         ! the Work RAM copy of scu_entries
 c_user_tab:     .long   USER_TAB
 c_user_base:    .long   0x06000900      ! cached, see MASK_SHADOW
 c_prio_tab:     .long   PRIO_TAB
@@ -437,6 +451,7 @@ c_abus_bit:     .long   0x8000
         .ifdef  DIAG
 p_diag_irq:     .long   diag_irq
         .endif
+scu_block_end:
 
 ! System call pointers and system variables: (address, value)
         .align  2
