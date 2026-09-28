@@ -228,11 +228,15 @@ rd_be32:
 ! boot_game: hand over to the disc. State as a game expects it after the
 ! BIOS: VBR = 0x06000000 (vbr_init), stack from the IP.BIN header
 ! (0x06002000 if zero), R0-R14, GBR, MACH/MACL, PR and SR all zero, the
-! cache purged and enabled, CD audio mixed in (slots 16/17) and execution
+! cache purged and enabled, the CD block reset to no connection and empty
+! selectors (cd_handover), CD audio mixed in (slots 16/17) and execution
 ! at 0x06002E00. The header's slave stack (0x06001000 if zero) is kept at
 ! 0x060002AC for slave_start. Does not return.
         .align  2
 boot_game:
+        mov.l   p_cd_handover, r0       ! CD block to a clean state (still on
+        jsr     @r0                     ! the BIOS stack)
+        nop
         mov.l   c_ip_sstack, r1
         mov.l   @r1, r0
         tst     r0, r0
@@ -313,6 +317,7 @@ c_mix_right:    .word   0x00EF          ! EFSDL 7, EFPAN right
         .align  2
 c_ccr:          .long   0xFFFFFE92
 p_cd_read:      .long   cd_read
+p_cd_handover:  .long   cd_handover
         .ifdef  DIAG
 p_diag_start_wdt: .long diag_start_wdt
         .endif

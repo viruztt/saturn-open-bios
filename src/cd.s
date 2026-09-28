@@ -18,6 +18,7 @@
         .global cd_toc
         .global cd_read_ip
         .global cd_read
+        .global cd_handover
         .global CD_STAT
         .global CD_AUTH
         .global CD_TOC
@@ -841,6 +842,28 @@ c_sector_bytes: .word   2048
 c_fad150:       .word   150
 c_play:         .word   0x1080          ! Play disc, start given as FAD
 
+! cd_handover: before a game starts, leave the CD block as our reads did
+! not: no transfer in progress, the drive connected to no filter, and all
+! filters, partitions and buffered sectors reset. (On MiSTer, Sonic R's
+! Play of its first music track stayed in SEEK with the drive still
+! connected to filter 0 as cd_read left it.) Authentication is kept: an
+! Initialize CD System soft reset would clear it. Clobbers r0-r7.
+        .align  2
+cd_handover:
+        sts.l   pr, @-r15
+        mova    cmd_endxfer, r0
+        bsr     cd_cmdt
+        mov     r0, r4
+        mova    cmd_nocon, r0
+        bsr     cd_cmdt
+        mov     r0, r4
+        mova    cmd_resetall, r0
+        bsr     cd_cmdt
+        mov     r0, r4
+        lds.l   @r15+, pr
+        rts
+        nop
+
 ! Commands: CR1, CR2, CR3, CR4
         .align  2
 cmd_status:     .word   0x0000, 0x0000, 0x0000, 0x0000  ! Get CD status
@@ -849,6 +872,8 @@ cmd_gettoc:     .word   0x0200, 0x0000, 0x0000, 0x0000  ! Get TOC
 cmd_init:       .word   0x0400, 0xFFFF, 0xFFFF, 0xFFFF  ! Initialize CD system (no changes)
 cmd_endxfer:    .word   0x0600, 0x0000, 0x0000, 0x0000  ! End data transfer
 cmd_cdconn:     .word   0x3000, 0x0000, 0x0000, 0x0000  ! CD device -> filter 0
+cmd_nocon:      .word   0x3000, 0x0000, 0xFF00, 0x0000  ! CD device -> no filter
+cmd_resetall:   .word   0x48FC, 0x0000, 0x0000, 0x0000  ! Reset selector: all flags
 cmd_resetsel:   .word   0x4800, 0x0000, 0x0000, 0x0000  ! Reset selector: partition 0
 cmd_secnum:     .word   0x5100, 0x0000, 0x0000, 0x0000  ! Get sector number: partition 0
 cmd_seclen:     .word   0x6000, 0x0000, 0x0000, 0x0000  ! Set sector length: 2048 get/put
