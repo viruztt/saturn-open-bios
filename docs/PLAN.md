@@ -121,8 +121,8 @@ disassembled.
   For the bring-up the BIOS now shows a "Hand-over check" page for 5 s
   before starting the game: 16 bytes at IP.BIN +0000/+0800/+0E00/+1000 and
   at the first read address, and the CD sector checks (Get Sector Info
-  rejected count, sectors dropped for a wrong FAD). Remove once MiSTer
-  boots games.
+  rejected count, sectors dropped for a wrong FAD). Removed on 2026-09-28
+  once MiSTer booted the games.
 - Eighth MiSTer run: IP.BIN now fine; the first read file (113 sectors)
   stopped after 96 (64 + 32), with the drive paused and no sector arriving
   even after three fresh Play requests. On a read that gives up, the BIOS

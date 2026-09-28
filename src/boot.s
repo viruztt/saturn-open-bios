@@ -225,9 +225,6 @@ readouts_done:
         bra     idle
         nop
         .endif
-        mov.l   p_handover_check, r0
-        jsr     @r0
-        nop
         mov.l   p_boot_game, r0
         jmp     @r0
         nop
@@ -252,7 +249,6 @@ p_vdp2_init:    .long   vdp2_init
 p_con_puts:     .long   con_puts
 p_con_puthex:   .long   con_puthex
 p_boot_game:    .long   boot_game
-p_handover_check: .long handover_check
         .ifdef  DIAG
 p_diag_postmortem: .long diag_postmortem
         .endif
@@ -350,92 +346,3 @@ msg_fra:        .asciz  "1st read addr"
 msg_frs:        .asciz  "1st read size"
         .align  2
 msg_boot:       .asciz  "Booting disc..."
-
-        .align  2
-! handover_check: MiSTer bring-up aid. Shows what is in memory where the
-! game will run (16 bytes each at IP.BIN +0000/+0800/+0E00/+1000 and at the
-! first read address) and the CD sector checks, for about 5 s.
-        .align  2
-handover_check:
-        sts.l   pr, @-r15
-        mov.l   ph_vdp2_init, r0
-        jsr     @r0
-        nop
-        mova    msg_hocheck, r0
-        mov     r0, r4
-        mov     #2, r5
-        mov.l   ph_con_puts, r0
-        jsr     @r0
-        mov     #0, r6
-        mova    ho_rows, r0             ! (label, address, 1 = address of a pointer)
-        mov     r0, r8
-        mov     #2, r9
-1:      mov.l   @r8+, r4
-        tst     r4, r4
-        bt      3f
-        mov     #2, r5
-        mov.l   ph_con_puts, r0
-        jsr     @r0
-        mov     r9, r6
-        mov.l   @r8+, r10
-        mov.l   @r8+, r0
-        tst     r0, r0
-        bt      4f
-        mov.l   @r10, r10               ! dereference, read cache-through
-        mov.l   c_uncached, r0
-        or      r0, r10
-4:      add     #1, r9
-        mov     #2, r11
-        mov     #4, r12
-2:      mov.l   @r10+, r4
-        mov     r11, r5
-        mov.l   ph_con_puthex, r0
-        jsr     @r0
-        mov     r9, r6
-        add     #9, r11
-        dt      r12
-        bf      2b
-        bra     1b
-        add     #2, r9
-3:      mov.w   c_hold, r8              ! hold for about 5 s
-5:      mov.l   p_vbl_wait, r0
-        jsr     @r0
-        nop
-        dt      r8
-        bf      5b
-        lds.l   @r15+, pr
-        rts
-        nop
-
-        .align  2
-ho_rows:
-        .long   msg_ho0,  0x26002000, 0
-        .long   msg_ho1,  0x26002800, 0
-        .long   msg_ho2,  0x26002E00, 0
-        .long   msg_ho3,  0x26003000, 0
-        .long   msg_ho4,  FR_ADDR, 1
-        .long   msg_ho5,  CD_SIREJ, 0
-        .long   msg_ho6,  CD_DROPPED - 4, 0
-        .long   0
-p_vbl_wait:     .long   vbl_wait
-ph_vdp2_init:   .long   vdp2_init
-ph_con_puts:    .long   con_puts
-ph_con_puthex:  .long   con_puthex
-c_uncached:     .long   0x20000000
-c_hold:         .word   300
-        .align  2
-msg_hocheck:    .asciz  "Hand-over check"
-        .align  2
-msg_ho0:        .asciz  "IP.BIN +0000"
-        .align  2
-msg_ho1:        .asciz  "IP.BIN +0800 (2nd sector)"
-        .align  2
-msg_ho2:        .asciz  "IP.BIN +0E00 (entry code)"
-        .align  2
-msg_ho3:        .asciz  "IP.BIN +1000 (3rd sector)"
-        .align  2
-msg_ho4:        .asciz  "1st read file start"
-        .align  2
-msg_ho5:        .asciz  "CD: SI rejected, error, FAD, left"
-        .align  2
-msg_ho6:        .asciz  "CD: chunk, dropped, width, -"
