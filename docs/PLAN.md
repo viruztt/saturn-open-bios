@@ -188,7 +188,15 @@ disassembled.
     the game had set up the SCSP. The BIOS left the drive connected to
     filter 0 from its own reads; the hand-over now ends any transfer,
     disconnects the drive and resets all selectors (authentication kept).
-    Waiting for a MiSTer run.
+    That was not it: with the new diagnostics Sonic R's drive still seeks at
+    track 2 with an empty buffer, crackling. The MiSTer core runs the real
+    CD block firmware and emulates only the drive (Main_MiSTer
+    `support/saturn/saturncdd.cpp`); for a cue PREGAP that is not stored in
+    the image, its audio reads compute the file position as if it were and
+    so play the end of the data track, which the firmware starts reading
+    just before track 2. The tone disc's PREGAP cue did not show it because
+    its image stores silence there. Likely a MiSTer image-handling issue,
+    not the BIOS; to be confirmed with cues that drop the PREGAP line.
 - Debug tools: fatal exceptions (vectors 4/6/9/10) show a crash screen with
   vector, PC, SR, PR, SP and the 32 bytes around PC. `make diag` builds a
   diagnostics BIOS (`src/diag.s`): it counts system calls, samples the
