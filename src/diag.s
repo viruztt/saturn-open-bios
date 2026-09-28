@@ -462,21 +462,55 @@ report:
         mov     #3, r9
         bsr     grid
         nop
-        mov.l   c_p2_hirq, r1           ! ask the CD block for its status
-        mov.w   c_p2_notcmok, r0        ! (Get Status) so CR1-CR4 below are
-        mov.w   r0, @r1                 ! the drive state now: status, track,
-        mov.l   c_p2_cr1, r2            ! index and FAD
-        mov     #0, r0
+        mova    cdq_tab, r0             ! ask the CD block: status (status,
+        mov     r0, r8                  ! track, index, FAD), CD device
+6:      mov.l   @r8+, r4                ! connection, buffer size; each row
+        tst     r4, r4                  ! shows CR1:CR2 and CR3:CR4
+        bt      8f
+        mov     #2, r5
+        mov.l   p_con_puts, r0
+        jsr     @r0
+        mov     r9, r6
+        mov.l   @r8+, r10               ! CR1 of the command
+        mov.l   c_p2_hirq, r1
+        mov.w   c_p2_notcmok, r0
+        mov.w   r0, @r1
+        mov.l   c_p2_cr1, r2
+        mov     r10, r0
         mov.w   r0, @r2
+        mov     #0, r0
         mov.w   r0, @(4, r2)
         mov.w   r0, @(8, r2)
         mov.w   r0, @(12, r2)
         mov.l   c_p2_wait, r3
 7:      mov.w   @r1, r0
         tst     #1, r0
-        bf      8f
+        bf      9f
         dt      r3
         bf      7b
+9:      mov.l   c_p2_cr1, r2
+        mov.w   @r2, r4
+        shll16  r4
+        mov.w   @(4, r2), r0
+        extu.w  r0, r0
+        or      r0, r4
+        mov     #16, r5
+        mov.l   p_con_puthex, r0
+        jsr     @r0
+        mov     r9, r6
+        mov.l   c_p2_cr1, r2
+        mov.w   @(8, r2), r0
+        mov     r0, r4
+        shll16  r4
+        mov.w   @(12, r2), r0
+        extu.w  r0, r0
+        or      r0, r4
+        mov     #25, r5
+        mov.l   p_con_puthex, r0
+        jsr     @r0
+        mov     r9, r6
+        bra     6b
+        add     #1, r9
 8:      add     #1, r9                  ! hardware snapshot: (label, address,
         mova    snap, r0                ! 0 = word / 1 = long / 2 = byte)
         mov     r0, r8
@@ -547,13 +581,16 @@ c_p2_cr1:       .long   0x25890018
 c_p2_wait:      .long   0x00100000
 
         .align  2
+cdq_tab:
+        .long   s_q_stat, 0x0000        ! Get CD Status
+        .long   s_q_conn, 0x3100        ! Get CD Device Connection
+        .long   s_q_buf,  0x5000        ! Get Buffer Size
+        .long   0
+
+        .align  2
 snap:
         .long   s_hirq,  0x25890008, 0
         .long   s_hmask, 0x2589000C, 0
-        .long   s_cr1,   0x25890018, 0
-        .long   s_cr2,   0x2589001C, 0
-        .long   s_cr3,   0x25890020, 0
-        .long   s_cr4,   0x25890024, 0
         .long   s_ist,   0x25FE00A4, 1
         .long   s_sf,    0x20100063, 2
         .long   s_tvstat, 0x25F80004, 0
@@ -603,6 +640,12 @@ t_ring:         .asciz  "Last PCs"
         .align  2
 s_hirq:         .asciz  "CD HIRQ"
         .align  2
+s_q_stat:       .asciz  "CD status"
+        .align  2
+s_q_conn:       .asciz  "CD dev conn"
+        .align  2
+s_q_buf:        .asciz  "CD buffer"
+        .align  2
 s_mvol:         .asciz  "SCSP MEM4MB/MVOL"
         .align  2
 s_mix16:        .asciz  "SCSP slot16 mix"
@@ -614,14 +657,6 @@ s_rbp:          .asciz  "SCSP RBL/RBP"
 s_mpro:         .asciz  "SCSP DSP step 0"
         .align  2
 s_hmask:        .asciz  "CD HIRQ mask"
-        .align  2
-s_cr1:          .asciz  "CD CR1"
-        .align  2
-s_cr2:          .asciz  "CD CR2"
-        .align  2
-s_cr3:          .asciz  "CD CR3"
-        .align  2
-s_cr4:          .asciz  "CD CR4"
         .align  2
 s_ist:          .asciz  "SCU IST"
         .align  2
