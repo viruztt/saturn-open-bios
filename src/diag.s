@@ -28,6 +28,7 @@
         .global diag_irq
         .global diag_start_wdt
         .global diag_postmortem
+        .global diag_start_swdt
         .global DIAG_SLAVE
 
         .equ    DIAG,       0x26000C80      ! variables, cache-through
@@ -40,6 +41,8 @@
         .equ    DIAG_TICKS, DIAG + 0x18     ! watchdog ticks
         .equ    DIAG_MAGIC, DIAG + 0x1C     ! "DIAG" once a game was started
         .equ    MAGIC,      0x44494147
+        .equ    DIAG_SLV,   0x26000EF0      ! slave samples: PC, PR, SR, ticks
+                                            ! (spare CD variable space)
         .equ    DIAG_TICKLIM, 205           ! ~15 s of 73 ms ticks
         .equ    WDT_VECTOR, 0x68            ! as set in VCRWDT by cpu_vectors
         .equ    DIAG_CALLS, DIAG + 0x20     ! one longword per system call
@@ -86,11 +89,70 @@ diag_w_\service:
         DIAGWRAP 14, sc_change_scu_mask
         DIAGWRAP 15, bup_init
 
+! diag_start_swdt: on the slave, from slave_start: the slave's own
+! watchdog in interval mode at priority 15, vector 0x68 in the slave table
+! at 0x06000400, sampling into DIAG_SLV (shown on the post-mortem page).
+! Clobbers r0, r1.
+        .align  2
+diag_start_swdt:
+        mov.l   c_sw_vec, r1
+        mov.l   p_diag_swdt, r0
+        mov.l   r0, @r1
+        mov.l   c_sw_ipra, r1
+        mov.w   @r1, r0
+        or      #0xF0, r0
+        mov.w   r0, @r1
+        mov.l   c_sw_wtcsr, r1
+        mov.w   c_sw_cnt0, r0
+        mov.w   r0, @r1
+        mov.w   c_sw_go, r0
+        rts
+        mov.w   r0, @r1
+
+! diag_swdt: slave watchdog tick: clear OVF, keep PC/PR/SR, count.
+        .align  2
+diag_swdt:
+        mov.l   r0, @-r15
+        mov.l   r1, @-r15
+        mov.l   r2, @-r15               ! stack: r2 r1 r0 PC SR
+        mov.l   c_sw_wtcsr, r1
+        mov.b   @r1, r0
+        and     #0x7F, r0
+        mov.w   c_sw_key, r2
+        or      r2, r0
+        mov.w   r0, @r1
+        mov.l   c_sw_slv, r1
+        mov.l   @(12, r15), r0          ! PC
+        mov.l   r0, @r1
+        sts     pr, r0
+        mov.l   r0, @(4, r1)
+        mov.l   @(16, r15), r0          ! SR
+        mov.l   r0, @(8, r1)
+        mov.l   @(12, r1), r0
+        add     #1, r0
+        mov.l   r0, @(12, r1)
+        mov.l   @r15+, r2
+        mov.l   @r15+, r1
+        mov.l   @r15+, r0
+        rte
+        nop
+
+        .align  2
+c_sw_vec:       .long   0x06000400 + WDT_VECTOR * 4
+p_diag_swdt:    .long   diag_swdt
+c_sw_ipra:      .long   0xFFFFFEE2
+c_sw_wtcsr:     .long   0xFFFFFE80
+c_sw_slv:       .long   DIAG_SLV
+c_sw_cnt0:      .word   0x5A00
+c_sw_go:        .word   0xA53F
+c_sw_key:       .word   0xA500
+
 ! diag_postmortem: called at power-on/reset right after the console is up,
 ! before anything touches Work RAM. If a game had been started, show the
 ! post-mortem page (row 1: VBlanks, ticks, last sampled PC and PR; rows 2-3:
 ! PC ring; row 4: slave starts, slave entry and stack; rows 5-8: call
-! counters in table order; rows 10-13: the 64 bytes at 0x060C8000 (Virtua
+! counters in table order; row 9: the slave's last watchdog sample (PC,
+! PR, SR) and tick count; rows 10-13: the 64 bytes at 0x060C8000 (Virtua
 ! Cop's master/slave variables; row 0 still shows the IP.BIN master stack
 ! top); rows 15-26: the 192 bytes below
 ! 0x060C8000, where Virtua Cop's main program puts its stack; 4 longwords
@@ -163,6 +225,11 @@ diag_postmortem:
         mov     #5, r10
         bsr     pm_dump
         nop
+        mov.l   c_pm_slv, r8            ! row 9: slave PC, PR, SR, ticks
+        mov     #4, r9
+        mov     #9, r10
+        bsr     pm_dump
+        nop
         mov.l   c_pm_ip_sp, r1          ! rows 10-25: 256 bytes below the
         mov.l   @r1, r8                 ! game's stack top (0x06002000 if
         tst     r8, r8                  ! the header leaves it 0)
@@ -226,6 +293,7 @@ c_pm_def_sp:    .long   0x06002000
 p_pm_puts:      .long   con_puts
 c_pm_sp2:       .long   0x060C8000
 c_pm_comm:      .long   0x260C8000
+c_pm_slv:       .long   DIAG_SLV
 c_pm_sentry:    .long   0x26000250
 c_pm_sstack:    .long   0x260002AC
 p_pm_puthex:    .long   con_puthex

@@ -96,6 +96,11 @@ slave_start:
         mov.l   c_tier, r1
         mov     #0x81, r0               ! TIER: input capture interrupt on
         mov.b   r0, @r1
+        .ifdef  DIAG                    ! diagnostics: sample the slave too
+        mov.l   c_diag_swdt, r0
+        jsr     @r0
+        nop
+        .endif
         mov.l   c_slave_vbr, r0
         ldc     r0, vbr
         mov.l   c_slave_stack, r1
@@ -345,6 +350,7 @@ c_slave_vbr:    .long   0x06000400
 c_tier:         .long   0xFFFFFE10
         .ifdef  DIAG
 c_diag_slave:   .long   DIAG_SLAVE
+c_diag_swdt:    .long   diag_start_swdt
         .endif
 c_slave_stack:  .long   0x260002AC      ! system variable: slave stack
 c_slave_entry:  .long   0x26000250      ! system variable: slave entry point
