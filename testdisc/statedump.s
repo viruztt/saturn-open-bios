@@ -226,7 +226,9 @@ c_page_wait:    .word   360
 
         .align  2
 t_labels:       .long   l_a_ent, l_a_sr, l_a_mask, l_a_sp
-                .long   l_b_ent, l_b_sr, l_b_mask, l_b_sp, 0
+                .long   l_b_ent, l_b_sr, l_b_mask, l_b_sp
+                .long   l_din, l_dout, l_din, l_dout
+                .long   l_din, l_dout, l_din, l_dout, 0
         .align  2
 slave_labels:   .long   l_flag, l_sr, l_vbr, l_gbr, l_r15, 0
 
@@ -374,6 +376,10 @@ l_b_mask:       .asciz  "B MASK"
         .align  2
 l_b_sp:         .asciz  "B SP"
         .align  2
+l_din:          .asciz  "DMA IN"
+        .align  2
+l_dout:         .asciz  "DMA OUT"
+        .align  2
 l_vdma0:        .asciz  "VDMA0"
         .align  2
 l_vdma1:        .asciz  "VDMA1"
@@ -500,6 +506,13 @@ page3:
         mov.l   c_entry_b, r4           ! test B: another level and mask
         bsr     int_test
         add     #16, r11
+        add     #16, r11                ! DMA end latency, 4 samples
+        mov     #4, r9
+20:     bsr     dma_test
+        nop
+        dt      r9
+        bf/s    20b
+        add     #8, r11
         mov.l   p_vdp2_init3, r0
         jsr     @r0
         nop
@@ -630,3 +643,133 @@ p_con_puts3:    .long   con_puts
 p_title3:       .long   s_title3
 p_t_labels:     .long   t_labels
 c_page_wait3:   .word   360
+
+! dma_test: time a level-0 SCU DMA end interrupt through the BIOS. The
+! handler (vector 0x4B, priority entry 0x0000F9DB as Virtua Cop uses) runs
+! from the dispatcher; FRC ticks (CPU clock / 8) from starting the DMA to
+! the handler (+0 at r11) and from the handler to the main code seeing its
+! flag (+4). A 4-byte transfer to the end of VDP2 VRAM.
+        .align  2
+dma_test:
+        sts.l   pr, @-r15
+        mov.l   d_sys_setmask, r0       ! mask everything
+        mov.l   @r0, r0
+        mov.l   d_ffff, r4
+        jsr     @r0
+        nop
+        mov.l   d_ptab, r1              ! priority table
+        mov.l   d_defprio, r0
+        mov     #32, r2
+1:      mov.l   r0, @r1
+        dt      r2
+        bf/s    1b
+        add     #4, r1
+        mov.l   d_ptab, r1
+        mov.l   d_entry, r0
+        mov.l   r0, @(11*4, r1)
+        mov.l   d_ptab, r4
+        mov.l   d_sys_prio, r0
+        mov.l   @r0, r0
+        jsr     @r0
+        nop
+        mov     #0x4B, r4               ! SetScuInterrupt(0x4B, dma_handler)
+        mov.l   p_dma_handler, r5
+        mov.l   d_sys_setint, r0
+        mov.l   @r0, r0
+        jsr     @r0
+        nop
+        mov.l   d_flag, r1
+        mov     #0, r0
+        mov.l   r0, @r1
+        ldc     r0, sr
+        mov.l   d_f7ff, r4              ! unmask level-0 DMA end
+        mov.l   d_sys_setmask, r0
+        mov.l   @r0, r0
+        jsr     @r0
+        nop
+        mov.l   d_scu, r1               ! D0R, D0W, D0C, D0AD, D0MD
+        mov.l   d_src, r0
+        mov.l   r0, @r1
+        mov.l   d_dst, r0
+        mov.l   r0, @(4, r1)
+        mov     #4, r0
+        mov.l   r0, @(8, r1)
+        mov.w   d_add, r0
+        mov.l   r0, @(12, r1)
+        mov     #7, r0
+        mov.l   r0, @(20, r1)
+        bsr     frc
+        nop
+        mov     r0, r8                  ! r8 = start
+        mov.l   d_scu, r1
+        mov.w   d_go, r0
+        mov.l   r0, @(16, r1)           ! D0EN: enable + start
+        mov.l   d_wait, r2
+2:      mov.l   d_flag, r1
+        mov.l   @r1, r0
+        tst     r0, r0
+        bf      3f
+        dt      r2
+        bf      2b
+3:      bsr     frc
+        nop
+        mov.l   d_t1, r1                ! handler's time
+        mov.l   @r1, r1
+        sub     r1, r0
+        extu.w  r0, r0
+        mov.l   r0, @(4, r11)           ! out: handler -> main
+        sub     r8, r1
+        extu.w  r1, r1
+        mov.l   r1, @r11                ! in: start -> handler
+        mov.l   d_sys_setmask, r0
+        mov.l   @r0, r0
+        mov.l   d_ffff, r4
+        jsr     @r0
+        nop
+        lds.l   @r15+, pr
+        rts
+        nop
+
+! frc: r0 = free-running counter (FRCH then FRCL). Clobbers r1, r2.
+frc:
+        mov.l   d_frch, r1
+        mov.b   @r1, r0
+        extu.b  r0, r2
+        shll8   r2
+        mov.b   @(1, r1), r0
+        extu.b  r0, r0
+        rts
+        or      r2, r0
+
+dma_handler:
+        sts.l   pr, @-r15
+        bsr     frc
+        nop
+        mov.l   d_t1, r1
+        mov.l   r0, @r1
+        mov.l   d_flag, r1
+        mov     #1, r0
+        mov.l   r0, @r1
+        lds.l   @r15+, pr
+        rts
+        nop
+
+        .align  2
+d_sys_setmask:  .long   0x06000340
+d_sys_prio:     .long   0x06000280
+d_sys_setint:   .long   0x06000300
+d_ffff:         .long   0x0000FFFF
+d_f7ff:         .long   0x0000F7FF
+d_ptab:         .long   0x26082200
+d_defprio:      .long   0x00F0FFFF
+d_entry:        .long   0x0000F9DB
+p_dma_handler:  .long   dma_handler
+d_flag:         .long   0x26082108
+d_t1:           .long   0x2608210C
+d_scu:          .long   0x25FE0000
+d_src:          .long   0x06083000
+d_dst:          .long   0x25E7FF00
+d_wait:         .long   0x00400000
+d_frch:         .long   0xFFFFFE12
+d_add:          .word   0x0101
+d_go:           .word   0x0101
