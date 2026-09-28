@@ -5,7 +5,7 @@ emulators and on the MiSTer Saturn core. Clean-room: written only from public
 hardware documentation and observed behaviour. No Sega ROM bytes are copied or
 disassembled.
 
-## Status (2026-09-27)
+## Status (2026-09-28)
 - Stage 0 done: SH-2 vector table + reset code builds to a 512 KB image with
   GNU binutils (`sh-elf-as`), boots in Yabause 0.9.15 and paints the VDP2 back
   screen blue (`docs/stage0-yabause.png`). `make run` reproduces it headlessly.
@@ -18,8 +18,9 @@ disassembled.
   0x06000000/0x06000400 with VBR, SMPC SSHOFF/SNDOFF, SCU DMA/timer off +
   interrupts masked + A-bus/RSEL set, SCSP silenced + sound RAM clear, VDP1
   system clip/local origin set, VDP2 colour RAM clear. All OK in Yabause.
-  Still to do: SH-2 bus state controller / SDRAM setup (ignored by emulators,
-  required on real hardware and MiSTer; values from the SH7604 manual).
+  The SH-2 bus state controller (BCR1/BCR2/WCR/MCR) is set on both CPUs
+  since the MiSTer runs of 2026-09-28; SDRAM refresh (RTCSR/RTCOR) and mode
+  setup for real hardware are still to do.
 - Stage 4 done in Yabause: CD block driver in `src/cd.s` (command/reply
   protocol, HIRQ waits with timeouts, data and info ports). Boot now runs
   Initialize CD system, authenticate disc (0xE0/0xE1), read the TOC, and reads
@@ -160,11 +161,42 @@ disassembled.
   no CD audio on MiSTer. scsp_init had cleared the CD audio mix and left
   master volume 0; it now sets MVOL 15 and routes CD audio left/right
   through slots 16/17 (EFSDL 7, panned hard left/right).
+- MiSTer runs 14 onwards (2026-09-27/28), with the diagnostics below:
+  - Hand-over with the cache off made Panzer Dragoon run slowly with broken
+    graphics: several games never write CCR themselves. The cache is purged
+    and left on again.
+  - Panzer Dragoon's first read always stopped at the same FAD with the drive
+    in error. The dump's cue gives track 2 both a PREGAP line and a
+    one-frame INDEX 00; with that INDEX 00 line removed the game loads, so
+    this is the MiSTer's cue handling, not the BIOS.
+  - CD audio routed through slots 16/17 had left and right swapped (measured
+    on a generated tone); fixed. The mix is now raised only at the hand-over,
+    so a failed read during boot is not heard as noise. A BIN/CUE tone test
+    disc (`make build/testdisc-audio.bin`, two audio tracks, plus a cue in the
+    PREGAP layout dumps use) plays cleanly on MiSTer.
+  - House of the Dead, Virtua Cop, Virtua Cop 2 and Shutsudo stayed black.
+    Their master CPU waited on a TAS.B lock that the slave takes and releases
+    in a tight loop. The BIOS had left the bus state controller at its reset
+    values (WCR 0xAAFF, the longest waits); setting BCR1/BCR2/WCR/MCR on both
+    CPUs made all four games boot on MiSTer.
+  - Games other than Clockwork Knight played no CD music. Diagnostics showed
+    the drive stuck in SEEK at the start of the requested music track while
+    the game had set up the SCSP. The BIOS left the drive connected to
+    filter 0 from its own reads; the hand-over now ends any transfer,
+    disconnects the drive and resets all selectors (authentication kept).
+    Waiting for a MiSTer run.
 - Debug tools: fatal exceptions (vectors 4/6/9/10) show a crash screen with
-  vector, PC, SR, PR, SP and the 32 bytes around PC; `make diag` builds a diagnostics BIOS
-  (`src/diag.s`) that counts system calls, samples the game's PC on VBlank,
-  and after ~15 s shows those plus a CD block/SCU/SMPC/VDP status snapshot;
-  `make run-image IMAGE=...` / `run-image-diag` boot a disc image in place.
+  vector, PC, SR, PR, SP and the 32 bytes around PC. `make diag` builds a
+  diagnostics BIOS (`src/diag.s`): it counts system calls, samples the
+  game's PC on VBlank and on a watchdog tick (its priority is set again on
+  every system call, as some games clear IPRA), samples the slave the same
+  way, and after ~30 s shows those plus a live CD status and CD block, SCU,
+  SMPC, VDP and SCSP mixer registers. For games that hang with interrupts
+  masked, a reset that keeps Work RAM shows a post-mortem page (counters,
+  PC ring, slave samples, stack windows). `make run-image IMAGE=...` /
+  `run-image-diag` boot a disc image in place. `make B=build/nomix DEFS=
+  "--defsym NOMIX=1" build/nomix/saturn-open-bios.bin` builds a variant that
+  leaves the SCSP mixer at power-on values.
 
 ## Compatibility
 The owner reports that the rest of their dumps load too (not tested in
@@ -173,12 +205,18 @@ game data or screenshots in this repository). Kronos 2.7 (libretro core in
 RetroArch on Windows) is the main reference; Yabause 0.9.15 (WSL, headless)
 is the quick automated check.
 
-| Title | Kronos | Yabause 0.9.15 | Notes |
-|---|---|---|---|
-| Virtua Cop (JP) | Boots, attract mode | Boots, attract mode | |
-| Panzer Dragoon (JP) | Boots, intro plays | Boots, intro movie plays | |
-| The House of the Dead (JP) | Boots to title screen | Crashes (jumps into VDP1 RAM) | Also fails with Yabause's own HLE BIOS: emulator limit |
-| Shutsudo! Minisuka Police (JP) | Black screen | Black screen | Same with Kronos's and Yabause's own HLE BIOS. Game runs (VBlank interrupts, 10 SCU handlers, SCU mask changed every frame) but waits in a loop; not yet attributable to our BIOS |
+| Title | MiSTer | Kronos | Yabause 0.9.15 | Notes |
+|---|---|---|---|---|
+| Sonic R (EU) | Runs, no CD music | Title screen | | CD music: see status |
+| Clockwork Knight (JP) | Runs, CD music | Runs | | |
+| Die Hard Arcade (JP) | Runs | Title screen | | |
+| Virtua Cop (JP) | Boots, no CD music | Boots, attract mode | Boots, attract mode | Needed the bus state controller setup on MiSTer |
+| Virtua Cop 2 (EU) | Boots, no CD music | Boots | | Needed the bus state controller setup on MiSTer |
+| Panzer Dragoon (JP) | Runs with a corrected cue, no CD music | Boots, intro plays | Boots, intro movie plays | The dump's cue trips the MiSTer (see status) |
+| The House of the Dead (JP) | Boots, no CD music | Boots to title screen | Crashes (jumps into VDP1 RAM) | Yabause also fails with its own HLE BIOS |
+| Shutsudo! Minisuka Police (JP) | Boots | Black screen | Black screen | Same in the emulators with their own HLE BIOS; boots on MiSTer |
+
+"No CD music" was before the CD hand-over change of 2026-09-28.
 
 Fixes found this way:
 - Slave SH-2 start path (it starts at the reset vector too).
@@ -195,9 +233,9 @@ Fixes found this way:
 | Target | Custom BIOS accepted? | Notes |
 |---|---|---|
 | Yabause (`-b file`) | Yes | Current loop. Also has an HLE BIOS (`-nb`), useful as a behavioural reference. |
-| Kronos / Yaba Sanshiro | Expected yes (Yabause forks) | Not tried yet. |
+| Kronos (libretro) | Yes | Main emulator reference; optional SH-2 cache emulation (`kronos_usecache`). |
 | Mednafen 1.29 | **No** | Rejects any `sega_101.bin`/`mpr-17933.bin` whose hash isn't Sega's. Needs a small patch or a new setting upstream. |
-| MiSTer Saturn core | Expected yes (`boot.rom` is user supplied) | Needs real-hardware-accurate init; test once disc boot works. |
+| MiSTer Saturn core | Yes (`boot.rom` is user supplied) | Boots the tested games; models the SH-2 caches, CD block FIFO timing and bus contention that emulators skip. |
 | Real hardware | Later | 27C4096 EPROM swap. |
 
 ## What a BIOS must do (public knowledge, to be verified per step)
@@ -258,9 +296,10 @@ compared on 2026-09-27. Values Yabause copies from Sega's ROM are not used.
 | SCU IMS | all masked (shadow 0xFFFFFFFF at 0x06000348) | same | 6, done |
 | VDP1 system clip / local origin, EDSR | 319x223, (160,112), 3 | same (EDSR 2 after one list) | 3, done |
 | VDP2 | display on, NBG0, leftovers from the boot logo | our console | games reinit; revisit at 5 |
-| Master SH-2 registers at jump | R0-R14 = 0, SR = 0, GBR = 0, PC = 0x06002E00 (IP.BIN code) | same, cache purged | 5, done |
+| Master SH-2 registers at jump | R0-R14 = 0, SR = 0, GBR = 0, PC = 0x06002E00 (IP.BIN code) | same, cache purged and left on | 5, done |
+| SH-2 bus state controller | BCR1 0x03F1, BCR2 0x00FC, WCR 0x5555, MCR 0x0070 (set for the slave) | same, on both CPUs | 3, done |
 | Stack at jump | from IP.BIN header (master stack), 0x06002000 if zero | same | 5, done |
-| CD block | HIRQ 0xFC1, CR1-4 = status report, disc authenticated | authenticated, TOC read, IP sector read | 4, done; exact HIRQ at 5 |
+| CD block | HIRQ 0xFC1, CR1-4 = status report, disc authenticated | authenticated, no transfer, drive connected to no filter, selectors reset | 4, done; exact HIRQ at 5 |
 | SMPC | last command INTBACK | - | 7 |
 | System calls 0x06000210-0x06000358, SCU dispatch 0x06000100-0x0600017F, 0x06000A00 table | BIOS service pointers | same, backup RAM library via 0x06000358 | 6, 7 done |
 
