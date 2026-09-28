@@ -79,7 +79,7 @@ cpu_vectors:
 ! 0x060002AC (filled at hand-over from the IP.BIN header, 0x06001000 by
 ! default), purge and enable its cache, and jump to the entry address the
 ! game stored at 0x06000250.
-! Interrupts stay masked in SR; the game lowers the mask itself.
+! The game is entered with SR = 0 (interrupts unmasked), like the master.
         .align  2
 slave_start:
         mov.l   c_ssp_default, r15      ! temporary stack for the calls below
@@ -124,10 +124,8 @@ slave_start:
         mov.b   r0, @r1                 ! models the speed difference)
         mov.l   c_slave_entry, r1
         mov.l   @r1, r1
-        .ifdef  SLAVESR0                ! (test builds: enter the game with
-        mov     #0, r0                  !  interrupts unmasked, SR = 0)
-        ldc     r0, sr
-        .endif
+        mov     #0, r0                  ! enter the game with SR = 0, as the
+        ldc     r0, sr                  ! master (interrupts unmasked)
         jmp     @r1
         nop
 
@@ -232,10 +230,36 @@ vbr_init:
         add     #8, r0
         mov.l   r0, @(10*4, r1)         ! DMA address error
         mov.l   r0, @(10*4, r2)
+        mov.l   c_frt_ici, r0           ! FRT input capture (vector 0x64): a
+        mov.w   c_off_ici, r3           ! handler that clears ICF, since the
+        add     r3, r1                  ! interrupt is enabled on both CPUs
+        mov.l   r0, @r1                 ! and a bare rte would take it again
+        add     r3, r2                  ! forever
+        mov.l   r0, @r2
         mov.l   c_vbr, r0
         ldc     r0, vbr
         rts
         mov     #0, r0
+
+! frt_ici_default: default FRT input capture handler: clear ICF and return.
+        .align  2
+frt_ici_default:
+        mov.l   r0, @-r15
+        mov.l   r1, @-r15
+        mov.l   c_ftcsr, r1
+        mov.b   @r1, r0
+        and     #0x7F, r0
+        mov.b   r0, @r1
+        mov.l   @r15+, r1
+        mov.l   @r15+, r0
+        rte                             ! (rte pops PC and SR itself, so the
+        nop                             !  stack must be back to them first)
+
+        .align  2
+c_frt_ici:      .long   frt_ici_default
+c_ftcsr:        .long   0xFFFFFE11
+c_off_ici:      .word   0x64 * 4
+        .align  2
 
 ! smpc_init: make sure the slave SH-2 and the sound CPU are held in reset.
         .align  2

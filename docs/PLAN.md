@@ -211,7 +211,11 @@ disassembled.
   Virtua Cop dropped parts of its 3D scene without it), SDRAM refresh
   (MCR 0x78, RTCOR 0x36, RTCSR 0x08), DMAOR left 0, SCSP left with MVOL 0
   and slots 16/17 not mixed in, CD HIRQ without DRDY/CSCT/PEND, TVMD
-  0x8000.
+  0x8000. A second page starts the slave the way games do (entry at
+  0x06000250, SSHON) and shows its state: the other BIOS enters the
+  slave's code with SR = 0, ours with 0xF0. Now SR = 0 too, with a default
+  FRT input capture handler (clears ICF) on both CPUs so a pending
+  capture does not loop; the slave no longer runs SDRAM refresh.
 - Backup RAM manager (`src/menu.s`, 2026-09-28): opens when the drive
   reports no disc or an open tray, when Start is held at the end of the
   boot, or with Start on a failed boot. Lists the saves on the internal
