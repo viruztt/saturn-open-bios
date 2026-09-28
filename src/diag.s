@@ -89,8 +89,10 @@ diag_w_\service:
 ! diag_postmortem: called at power-on/reset right after the console is up,
 ! before anything touches Work RAM. If a game had been started, show the
 ! post-mortem page (row 1: VBlanks, ticks, last sampled PC and PR; rows 2-3:
-! PC ring; rows 5-8: call counters in table order; rows 10-13: the 64 bytes
-! below the IP.BIN master stack top; rows 15-26: the 192 bytes below
+! PC ring; row 4: slave starts, slave entry and stack; rows 5-8: call
+! counters in table order; rows 10-13: the 64 bytes at 0x060C8000 (Virtua
+! Cop's master/slave variables; row 0 still shows the IP.BIN master stack
+! top); rows 15-26: the 192 bytes below
 ! 0x060C8000, where Virtua Cop's main program puts its stack; 4 longwords
 ! per row, lowest address first) and halt.
 ! The marker is cleared first, so the next reset boots normally. Uses no
@@ -138,6 +140,24 @@ diag_postmortem:
         mov     #2, r10
         bsr     pm_dump
         nop
+        mov.l   c_pm_diag, r8           ! row 4: slave starts, slave entry
+        mov.l   @(16, r8), r4           ! and stack as the game left them
+        mov     #2, r5
+        mov.l   p_pm_puthex, r0
+        jsr     @r0
+        mov     #4, r6
+        mov.l   c_pm_sentry, r1
+        mov.l   @r1, r4
+        mov     #11, r5
+        mov.l   p_pm_puthex, r0
+        jsr     @r0
+        mov     #4, r6
+        mov.l   c_pm_sstack, r1
+        mov.l   @r1, r4
+        mov     #20, r5
+        mov.l   p_pm_puthex, r0
+        jsr     @r0
+        mov     #4, r6
         mov.l   c_pm_calls, r8          ! rows 5-8: call counters (16)
         mov     #16, r9
         mov     #5, r10
@@ -153,9 +173,8 @@ diag_postmortem:
         mov.l   p_pm_puthex, r0
         jsr     @r0
         mov     #0, r6
-        mov     #64, r0                 ! rows 10-13: 64 bytes below it
-        sub     r0, r8
-        mov     #16, r9
+        mov.l   c_pm_comm, r8           ! rows 10-13: 64 bytes at 0x060C8000,
+        mov     #16, r9                 ! Virtua Cop's master/slave variables
         mov     #10, r10
         bsr     pm_dump
         nop
@@ -206,6 +225,9 @@ c_pm_ip_sp:     .long   0x260020F0
 c_pm_def_sp:    .long   0x06002000
 p_pm_puts:      .long   con_puts
 c_pm_sp2:       .long   0x060C8000
+c_pm_comm:      .long   0x260C8000
+c_pm_sentry:    .long   0x26000250
+c_pm_sstack:    .long   0x260002AC
 p_pm_puthex:    .long   con_puthex
 c_pm_192:       .word   192
         .align  2
