@@ -46,6 +46,16 @@ build/testdisc.iso: tools/mktestdisc.py build/testdisc/ip.bin build/testdisc/pro
 build/testdisc-audio.bin: tools/mkaudiodisc.py build/testdisc.iso
 	python3 tools/mkaudiodisc.py build/testdisc.iso $@ build/testdisc-audio.cue
 
+# Post-BIOS state dump program, linked at a disc's first read address:
+# make build/statedump.bin DUMP_ADDR=0x06004000
+DUMP_ADDR ?= 0x06004000
+build/statedump.bin: testdisc/statedump.s build/console.o build/font.o
+	mkdir -p build/testdisc
+	$(AS) $(ASFLAGS) -o build/testdisc/statedump.o testdisc/statedump.s
+	$(LD) -EB -e 0 -Ttext $(DUMP_ADDR) -o build/statedump.elf build/testdisc/statedump.o build/console.o build/font.o
+	$(OBJCOPY) -O binary -j .text -j .rodata build/statedump.elf $@
+.PHONY: build/statedump.bin
+
 clean:
 	rm -rf build
 
