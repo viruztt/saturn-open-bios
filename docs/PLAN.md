@@ -203,6 +203,15 @@ disassembled.
     missing bands: the slave ran the game's code with its cache off (only
     the master's was enabled at hand-over). slave_start now purges and
     enables the slave's cache; both games play properly on MiSTer.
+- Post-BIOS state compared by observation (2026-09-28): `testdisc/statedump.s`
+  records the registers a BIOS leaves, run from a private image with a
+  game's IP.BIN on MiSTer with our BIOS and with another one. Differences,
+  now matched: the master's FRT input capture interrupt was off (IPRB
+  0x0F00 and TIER 0x81 expected, so the slave can signal the master:
+  Virtua Cop dropped parts of its 3D scene without it), SDRAM refresh
+  (MCR 0x78, RTCOR 0x36, RTCSR 0x08), DMAOR left 0, SCSP left with MVOL 0
+  and slots 16/17 not mixed in, CD HIRQ without DRDY/CSCT/PEND, TVMD
+  0x8000.
 - Backup RAM manager (`src/menu.s`, 2026-09-28): opens when the drive
   reports no disc or an open tray, when Start is held at the end of the
   boot, or with Start on a failed boot. Lists the saves on the internal
@@ -222,9 +231,7 @@ disassembled.
   SMPC, VDP and SCSP mixer registers. For games that hang with interrupts
   masked, a reset that keeps Work RAM shows a post-mortem page (counters,
   PC ring, slave samples, stack windows). `make run-image IMAGE=...` /
-  `run-image-diag` boot a disc image in place. `make B=build/nomix DEFS=
-  "--defsym NOMIX=1" build/nomix/saturn-open-bios.bin` builds a variant that
-  leaves the SCSP mixer at power-on values.
+  `run-image-diag` boot a disc image in place.
 
 ## Compatibility
 The owner reports that the rest of their dumps load too (not tested in

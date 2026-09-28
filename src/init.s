@@ -43,9 +43,9 @@ cpu_init:
         mov.l   c_scr, r1
         mov     #0, r0
         mov.b   r0, @r1                 ! SCR = 0: serial port off
-        mov.l   c_dmaor, r1             ! DMAOR = 1: DMA master enable, flags
-        mov     #1, r0                  ! clear
-        mov.l   r0, @r1
+        mov.l   c_tier_m, r1            ! TIER: FRT input capture interrupt on
+        mov     #0x81, r0               ! (with IPRB below the slave can
+        mov.b   r0, @r1                 !  signal the master, as games expect)
         sts.l   pr, @-r15               ! (stack not used yet: WRAM not
         bsr     poke_w                  !  cleared, but pushes are harmless)
         nop
@@ -162,7 +162,9 @@ bsc_tab_l:
         .long   0xFFFFFFE0, 0xA55A03F1  ! BCR1: DRAM field 1 (area 3)
         .long   0xFFFFFFE4, 0xA55A00FC  ! BCR2: bus widths as at reset
         .long   0xFFFFFFE8, 0xA55A5555  ! WCR: one wait state per area
-        .long   0xFFFFFFEC, 0xA55A0070  ! MCR: SDRAM/DRAM timing
+        .long   0xFFFFFFEC, 0xA55A0078  ! MCR: SDRAM timing, refresh on
+        .long   0xFFFFFFF8, 0xA55A0036  ! RTCOR: refresh interval
+        .long   0xFFFFFFF0, 0xA55A0008  ! RTCSR: refresh timer clock
         .long   0
 
 
@@ -376,7 +378,7 @@ c_snd_longs:    .long   0x80000 / 4
 c_scsp:         .long   SCSP
 c_vdp1_vram:    .long   VDP1_VRAM
 c_wtcsr:        .long   0xFFFFFE80
-c_dmaor:        .long   0xFFFFFFB0
+c_tier_m:       .long   0xFFFFFE10
 c_slave_vbr:    .long   0x06000400
 c_slave_ccr:    .long   0xFFFFFE92
 c_tier:         .long   0xFFFFFE10
@@ -398,7 +400,7 @@ cpu_tab:
                                         ! mode); with 0 the CPU would use
                                         ! auto-vectors and never ack the SCU
         .long   0xFFFFFEE2, 0           ! IPRA: DIVU/DMAC/WDT priority 0
-        .long   0xFFFFFE60, 0           ! IPRB: SCI/FRT priority 0
+        .long   0xFFFFFE60, 0x0F00      ! IPRB: FRT priority 15, SCI 0
         .long   0
 
         .align  2
@@ -419,16 +421,9 @@ scu_tab:
         .align  2
 scsp_tab:
         .long   SCSP + 0x000, 0x1000    ! KYONEX: apply key-off to all slots
-        .ifndef NOMIX                   ! (NOMIX test builds: leave the mixer
-                                        ! and MEM4MB/MVOL at power-on values)
-        .long   SCSP + 0x216, 0x001F    ! slot 16 = CD audio left: EFSDL 0,
-        .long   SCSP + 0x236, 0x000F    ! slot 17 = CD audio right: EFSDL 0,
-                                        ! EFPAN 0x1F left, 0x0F right; the
-                                        ! level is raised at hand-over
-                                        ! (boot_game), so CD audio plays for
-                                        ! games that do not set up the mixer
-        .long   SCSP + 0x400, 0x020F    ! MEM4MB (512 KB sound RAM), MVOL 15
-        .endif
+        .long   SCSP + 0x216, 0         ! slots 16/17 (CD audio): not mixed
+        .long   SCSP + 0x236, 0         ! in; the game's sound driver sets
+        .long   SCSP + 0x400, 0x0200    ! the mix. MEM4MB (512 KB), MVOL 0
         .long   SCSP + 0x41E, 0         ! SCIEB: 68000 interrupts off
         .long   SCSP + 0x422, 0x07FF    ! SCIRE: ack all
         .long   SCSP + 0x42A, 0         ! MCIEB: main CPU interrupts off

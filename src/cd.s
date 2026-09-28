@@ -872,9 +872,16 @@ cd_handover:
         mova    cmd_resetall, r0
         bsr     cd_cmdt
         mov     r0, r4
+        mov.l   c_ho_hirq, r1           ! and DRDY, CSCT and PEND cleared
+        mov.w   c_hirq_leave, r0        ! (left over from our reads)
+        mov.w   r0, @r1
         lds.l   @r15+, pr
         rts
         nop
+
+        .align  2
+c_ho_hirq:      .long   CD_HIRQ
+c_hirq_leave:   .word   0xFFE9          ! write 0 to bits 1, 2 and 4
 
 ! Commands: CR1, CR2, CR3, CR4
         .align  2

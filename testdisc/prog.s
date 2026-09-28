@@ -126,6 +126,15 @@ play_audio:
         mov     #2, r5
         bsr     puts
         mov     #20, r6
+        mov.l   c_mix16, r1             ! CD audio into the mix: slots 16/17
+        mov.w   c_mix_l, r0             ! EFSDL 7 panned left / right, MVOL 15
+        mov.w   r0, @r1                 ! (a game's sound driver does this)
+        mov.w   c_mix_r, r0
+        add     #0x20, r1
+        mov.w   r0, @r1
+        mov.l   c_mvol, r1
+        mov.w   c_mvol15, r0
+        mov.w   r0, @r1
         mov.l   c_cd_hirq, r2
         mov.l   c_cd_cr1, r1
         mov.w   c_not_cmok, r0
@@ -163,6 +172,12 @@ c_not_cmok:     .word   0xFFFE
 c_play_cr1:     .word   0x1000
 c_track2:       .word   0x0201
 c_play_cr3:     .word   0x0F00
+c_mix_l:        .word   0x00FF
+c_mix_r:        .word   0x00EF
+c_mvol15:       .word   0x020F
+        .align  2
+c_mix16:        .long   0x25B00216
+c_mvol:         .long   0x25B00400
         .align  2
 s_audio:        .asciz  "CD AUDIO TRACKS 2+3"
 

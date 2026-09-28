@@ -270,6 +270,15 @@ readouts_done:
         jsr     @r0
         mov     #1, r4
 27:
+        mov.l   94f, r1                 ! TVMD: display on, no border colour
+        mov.w   95f, r0                 ! mode (our console set it)
+        bra     96f
+        mov.w   r0, @r1
+        .align  2
+94:     .long   0x25F80000
+95:     .word   0x8000
+        .align  2
+96:
         .ifdef  VDP2CLR                 ! (test builds: VDP2 registers all 0,
         mov.l   91f, r1                 !  display off, instead of the
         mov     #0, r0                  !  console's setup, at hand-over)
