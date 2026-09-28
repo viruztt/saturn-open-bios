@@ -124,6 +124,10 @@ slave_start:
         mov.b   r0, @r1                 ! models the speed difference)
         mov.l   c_slave_entry, r1
         mov.l   @r1, r1
+        .ifdef  SLAVESR0                ! (test builds: enter the game with
+        mov     #0, r0                  !  interrupts unmasked, SR = 0)
+        ldc     r0, sr
+        .endif
         jmp     @r1
         nop
 
