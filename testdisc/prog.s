@@ -89,7 +89,12 @@ _start:
         mova    s_ok, r0
         bra     4f
         nop
-3:      add     #1, r10
+3:      cmp/eq  #2, r0                  ! 2: not applicable (no device)
+        bf      5f
+        mova    s_none, r0
+        bra     4f
+        nop
+5:      add     #1, r10
         mova    s_fail, r0
 4:      mov     r0, r4
         mov     #28, r5
@@ -180,6 +185,7 @@ tests:
         .long   n_bupd,   t_bupdir
         .long   n_bupx,   t_bupdelete
         .long   n_date,   t_date
+        .long   n_cart,   t_bupcart
         .long   0
 
         .align  2
@@ -188,6 +194,8 @@ s_title:        .asciz  "TEST DISC: BIOS SERVICES"
 s_ok:           .asciz  "OK"
         .align  2
 s_fail:         .asciz  "FAIL"
+        .align  2
+s_none:         .asciz  "NONE"
         .align  2
 n_sem:          .asciz  "SEMAPHORE GET/CLEAR"
         .align  2
@@ -212,6 +220,8 @@ n_bupd:         .asciz  "BUP DIRECTORY"
 n_bupx:         .asciz  "BUP DELETE"
         .align  2
 n_date:         .asciz  "BUP SET/GET DATE"
+        .align  2
+n_cart:         .asciz  "BUP CARTRIDGE"
 
         .align  2
 ! ---- tests: return r0 = 0 on pass --------------------------------------
@@ -703,6 +713,116 @@ t_bupdelete:
 
 ! Dates: SetDate and GetDate against values computed independently
 ! (minutes since 1980-01-01 00:00; week 0 = Sunday).
+! Backup RAM cartridge (device 1), if BUP_Init reported one: format it if
+! needed, check its geometry, write the 3000-byte save from t_bupwrite,
+! read it back, delete it; the free block count must return to where it
+! was. Returns 2 (NONE) without a cartridge.
+t_bupcart:
+        sts.l   pr, @-r15
+        mov.l   c_bup_conf, r1
+        mov.w   @(4, r1), r0            ! device 1 unit: 2 = cartridge
+        cmp/eq  #2, r0
+        bt      1f
+        lds.l   @r15+, pr
+        rts
+        mov     #2, r0
+1:      bsr     cart_stat
+        nop
+        cmp/eq  #2, r0
+        bf      2f
+        mov     #1, r4
+        BUPCALL 0x08                    ! Format
+        bsr     cart_stat
+        nop
+2:      tst     r0, r0
+        bf      9f
+        mov.l   c_bup_stat, r1
+        mov.l   @(8, r1), r0            ! blocks of 512 or 1024 bytes
+        mov.w   c_cart_512, r2
+        cmp/eq  r2, r0
+        bt      3f
+        shll    r2
+        cmp/eq  r2, r0
+        bf      9f
+3:      mov.l   @(4, r1), r0            ! at least 1024 blocks
+        mov.w   c_cart_1024, r2
+        cmp/hs  r2, r0
+        bf      9f
+        mov     #1, r4                  ! remove a leftover
+        mova    save_name, r0
+        mov     r0, r5
+        BUPCALL 0x18
+        bsr     cart_stat
+        nop
+        mov.l   c_bup_stat, r1
+        mov.l   @(16, r1), r12          ! r12 = free blocks before
+        mov     #1, r4
+        mov.l   c_bup_dirent, r5
+        mov.l   c_bup_data, r6
+        mov     #1, r7
+        BUPCALL 0x10                    ! Write
+        tst     r0, r0
+        bf      9f
+        mov.l   c_bup_buf, r1           ! Read back and compare
+        mov.l   c_save_size, r2
+        mov     #0, r0
+4:      mov.b   r0, @r1
+        dt      r2
+        bf/s    4b
+        add     #1, r1
+        mov     #1, r4
+        mova    save_name, r0
+        mov     r0, r5
+        mov.l   c_bup_buf, r6
+        BUPCALL 0x14
+        tst     r0, r0
+        bf      9f
+        mov.l   c_bup_data, r1
+        mov.l   c_bup_buf, r2
+        mov.l   c_save_size, r3
+5:      mov.b   @r1+, r0
+        mov.b   @r2+, r4
+        cmp/eq  r4, r0
+        bf      9f
+        dt      r3
+        bf      5b
+        mov     #1, r4                  ! Delete: free count back
+        mova    save_name, r0
+        mov     r0, r5
+        BUPCALL 0x18
+        tst     r0, r0
+        bf      9f
+        bsr     cart_stat
+        nop
+        mov.l   c_bup_stat, r1
+        mov.l   @(16, r1), r0
+        cmp/eq  r12, r0
+        bf      9f
+        mov.l   @r1, r4                 ! show the total size found
+        mov     #18, r5                 ! (r9 = this test's row)
+        bsr     puthex
+        mov     r9, r6
+        bra     pass
+        nop
+9:      bra     fail
+        nop
+
+! cart_stat: Stat(1, 3000, BUP_STAT) -> r0
+cart_stat:
+        sts.l   pr, @-r15
+        mov     #1, r4
+        mov.l   c_save_size, r5
+        mov.l   c_bup_stat, r6
+        BUPCALL 0x0C
+        lds.l   @r15+, pr
+        rts
+        nop
+
+        .align  2
+c_cart_512:     .word   512
+c_cart_1024:    .word   1024
+
+        .align  2
 t_date:
         sts.l   pr, @-r15
         mova    date_cases, r0
@@ -825,6 +945,33 @@ puts:
         bra     1b
         add     #2, r1
 2:      rts
+        nop
+
+! puthex: r4 as 8 hex digits at column r5, row r6. Clobbers r0-r3, r5, r6.
+puthex:
+        mov.l   c_map, r1
+        shll8   r6
+        shlr    r6
+        add     r6, r1
+        shll    r5
+        add     r5, r1
+        mov     #8, r3
+1:      rotl    r4
+        rotl    r4
+        rotl    r4
+        rotl    r4
+        mov     r4, r0
+        and     #15, r0
+        mov     #10, r2
+        cmp/hs  r2, r0
+        bf      2f
+        add     #7, r0
+2:      add     #0x30, r0
+        mov.w   r0, @r1
+        dt      r3
+        bf/s    1b
+        add     #2, r1
+        rts
         nop
 
         .align  2

@@ -59,6 +59,10 @@ disassembled.
   listed blocks). The test disc writes, reads, verifies, lists and deletes a
   3000-byte, 53-block save and checks dates against independently computed
   values (`docs/stage7-bup.png`, all 12 service tests OK).
+  Since 2026-09-28 also the backup RAM cartridge (device 1): the test disc
+  formats it if needed and writes, reads back and deletes a save, showing
+  the cartridge size found (OK in Kronos with 4, 8, 16 and 32 Mbit carts;
+  NONE without one).
 - First commercial game boots (see Compatibility). Found and fixed on the way:
   the slave SH-2 starts at the reset vector too, so `_start` now checks the
   BCR1 MASTER bit and sends the slave to `slave_start` (on-chip vectors, FRT
@@ -273,8 +277,11 @@ Fixes found this way:
   call addresses (priority table at 0x06000C00, boot work area
   0x06000D00-0x060017FF) is our own choice; check it against real games.
 - ChangeSystemClock skips the standby/NMI handshake of the real hardware.
-- Backup RAM: only the internal device; cartridge RAM (device 1) reports
-  "not connected". Write deletes an existing save before checking for space
+- Backup RAM: internal device (0) and backup RAM cartridge (1, 4-32 Mbit,
+  ID byte at 0x24FFFFFF; emulators that do not provide the ID are handled
+  by finding the format header and the address span where it repeats). No
+  floppy (2). A save may use up to 3040 blocks (the block list in SBL's
+  8 KB work area). Write deletes an existing save before checking for space
   (as Yabause's HLE BIOS does). The BupDir language byte is at offset 23
   (SBL layout); Yabause's HLE uses 22. Save format not yet checked against a
   dump from real hardware. BUP_Init ignores the library area.

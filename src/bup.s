@@ -10,10 +10,13 @@
 ! Return codes: 0 ok, 1 device not connected, 2 unformatted, 4 not enough
 ! space, 5 not found, 6 already exists, 7 verify mismatch, 8 broken data.
 !
-! Storage format of the internal backup RAM (32 KB, on the odd bytes of
-! 0x00180000-0x0018FFFF), as used by the console and by emulators, so saves
-! stay interchangeable. 512 blocks of 64 bytes; data byte i of block b is at
-! 0x00180001 + b * 128 + i * 2.
+! Devices: 0 = internal backup RAM (32 KB on the odd bytes of 0x00180000-
+! 0x0018FFFF, 512 blocks of 64 bytes); 1 = backup RAM cartridge, present
+! when the A-bus cartridge ID byte (0x24FFFFFF) is 0x21-0x24: 4, 8, 16 or 32
+! Mbit on the odd bytes from 0x04000000, blocks of 512 bytes (1024 for 32
+! Mbit), 1024 to 4096 blocks. Data byte i of block b is at
+! base + b * blocksize * 2 + i * 2. The format is the same on both and is
+! the one the console and emulators use, so saves stay interchangeable:
 !   block 0      "BackUpRam Format" x 4; block 1 unused; saves from block 2
 !   first block  [0] 0x80 = start of a save, [1..3] 0, [4..14] file name,
 !                [15] language, [16..25] comment, [26..29] date,
@@ -25,39 +28,56 @@
 ! differences: the block list is followed through the listed blocks (not the
 ! physically next ones), and the date conversion is exact for every year of
 ! the leap cycle. BupDir layout is SBL's: name[12], comment[11], language,
-! date, datasize, blocksize. Only the internal device (0) exists so far.
+! date, datasize, blocksize. There is no floppy device (2).
 !
 ! All entry points follow the C convention: r8-r14 and PR are preserved.
 
         .section .text
         .global bup_init
 
-        .equ    BUP1,       0x20180001      ! data byte 0 of block 0, cache-through
-        .equ    NBLOCKS,    512
+        .equ    BUP1,       0x20180001      ! internal: data byte 0 of block 0
+        .equ    CART_ID,    0x24FFFFFF      ! A-bus cartridge ID byte
+        .equ    CART1,      0x24000001      ! cartridge: data byte 0 of block 0
         ! System variable: BUP work area. Written through the cached address:
         ! the game reads it cached, and a write through the cache-through
         ! alias would leave a stale copy in the game's cache (SH-2 caches
         ! are write-through, so memory is right either way).
         .equ    WORK_PTR,   0x06000354
         ! Work area (given by the game, 8 KB in SBL): function table at +0,
-        ! block list (u16 x 512) at +0x40, used-block map (u8 x 512) at +0x440
-        .equ    W_LIST,     0x40
+        ! the current device at +0x30 (data byte 0 of block 0, block size,
+        ! block count; set by dev_setup), used-block map (u8 x up to 4096) at
+        ! +0x40, block list (u16 x LISTCAP) at +0x1040 up to +0x2000.
+        .equ    W_BASE,     0x30
+        .equ    W_BSIZE,    0x34
+        .equ    W_NBLK,     0x38
+        .equ    W_MAP,      0x40
+        .equ    LISTCAP,    3040            ! (0x2000 - 0x1040) / 2 entries
 
-! LIST rd: rd = block list base. MAP rd: rd = used-block map base.
-! NBLK rd: rd = 512. (No literal pool needed.)
+! LIST rd: rd = block list base (r11 + 0x1040). MAP rd: rd = used-block map
+! base. NBLK rd / BSIZE rd: rd = the device's block count / block size.
+! LCAP rd: rd = LISTCAP. (No literal pool needed.)
         .macro  LIST rd
-        mov     r11, \rd
-        add     #W_LIST, \rd
-        .endm
-        .macro  MAP rd
-        mov     #0x44, \rd
+        mov     #0x41, \rd
+        shll2   \rd
         shll2   \rd
         shll2   \rd
         add     r11, \rd
         .endm
+        .macro  MAP rd
+        mov     r11, \rd
+        add     #W_MAP, \rd
+        .endm
         .macro  NBLK rd
-        mov     #2, \rd
-        shll8   \rd
+        mov.l   @(W_NBLK, r11), \rd
+        .endm
+        .macro  BSIZE rd
+        mov.l   @(W_BSIZE, r11), \rd
+        .endm
+        .macro  LCAP rd
+        mov     #0x5F, \rd
+        shll2   \rd
+        shll2   \rd
+        shll    \rd
         .endm
 
         .macro  ENTER
@@ -87,6 +107,7 @@ leave:
 ! ---- BUP_Init ------------------------------------------------------------
         .align  2
 bup_init:
+        sts.l   pr, @-r15
         mov.l   lp_work_ptr, r0
         mov.l   r5, @r0
         mova    functions, r0
@@ -97,15 +118,110 @@ bup_init:
         dt      r2
         bf/s    1b
         add     #4, r5
-        mov     #1, r0                  ! device 0: internal, 1 partition
-        mov.w   r0, @r6
+        mov     #1, r0                  ! device 0: internal (unit 1),
+        mov.w   r0, @r6                 ! 1 partition
         mov.w   r0, @(2, r6)
-        mov     #0, r0                  ! cartridge and floppy: none yet
-        mov.w   r0, @(4, r6)
-        mov.w   r0, @(6, r6)
+        mov     #0, r0                  ! floppy: none
         mov.w   r0, @(8, r6)
-        rts
         mov.w   r0, @(10, r6)
+        mov.l   r6, @-r15
+        bsr     cart_info               ! device 1: a backup RAM cartridge
+        nop                             ! (unit 2, 1 partition) if present
+        mov.l   @r15+, r6
+        tst     r0, r0
+        bt/s    2f
+        mov     #0, r3
+        mov     #1, r3
+2:      mov     r3, r0
+        shll    r0
+        mov.w   r0, @(4, r6)
+        mov     r3, r0
+        mov.w   r0, @(6, r6)
+        lds.l   @r15+, pr
+        rts
+        nop
+
+! cart_info: r0 = block count of the backup RAM cartridge (0 if none), r1 =
+! its block size. The size code comes from the cartridge ID byte: 0x21-0x24
+! are 4, 8, 16 and 32 Mbit, i.e. 1024, 2048 and 4096 blocks of 512 bytes
+! and 4096 of 1024. Emulators may not provide the ID byte (reads return
+! cartridge RAM); then a cartridge whose RAM starts with the format header
+! is taken as present, and its size is where the address space first
+! repeats that header (every 0x100000 << (code - 1) bytes; 32 Mbit if it
+! never does). Clobbers r2-r7.
+        .align  2
+cart_info:
+        sts.l   pr, @-r15
+        mov.l   lp_cart_id, r1
+        mov.b   @r1, r0
+        and     #0xFF, r0
+        mov     r0, r2                  ! r2 = ID
+        and     #0xF0, r0
+        cmp/eq  #0x20, r0
+        bf      5f
+        mov     r2, r0
+        and     #0x0F, r0               ! r0 = size code 1-4
+        tst     r0, r0
+        bt      5f
+        mov     #4, r1
+        cmp/hi  r1, r0
+        bf      6f
+5:      mov.l   lp_cart1, r4            ! no ID: a formatted cartridge?
+        bsr     hdr_at
+        nop
+        bf      9f
+        mov     #1, r3                  ! r3 = size code, r5 = its span
+        mov.l   lp_cart_span, r5
+7:      mov     #4, r0
+        cmp/eq  r0, r3
+        bt      8f
+        mov.l   lp_cart1, r4
+        add     r5, r4
+        bsr     hdr_at
+        nop
+        bt      8f
+        shll    r5
+        bra     7b
+        add     #1, r3
+8:      mov     r3, r0
+6:      cmp/eq  #4, r0
+        bt      4f
+        mov     r0, r2                  ! 1-3: 512 << code blocks of 512
+        mov     #2, r0
+        shll8   r0
+1:      dt      r2
+        bf/s    1b
+        shll    r0
+        mov     #2, r1
+        bra     10f
+        shll8   r1
+4:      mov     #16, r0                 ! 4: 4096 blocks of 1024
+        shll8   r0
+        mov     #4, r1
+        bra     10f
+        shll8   r1
+9:      mov     #0, r0
+10:     lds.l   @r15+, pr
+        rts
+        nop
+
+! hdr_at: T = 1 if the data bytes from r4 (every other address) hold the
+! format header "BackUpRam Format". Clobbers r0, r1, r4, r6, r7.
+hdr_at:
+        mova    header, r0
+        mov     r0, r6
+        mov     #16, r7
+1:      mov.b   @r4, r0
+        add     #2, r4
+        mov.b   @r6+, r1
+        cmp/eq  r1, r0
+        bf      9f
+        dt      r7
+        bf      1b
+        rts
+        sett
+9:      rts
+        clrt
 
         .align  2
 functions:
@@ -120,16 +236,54 @@ bup_selpart:
 
 ! ---- device checks ----------------------------------------------------------
 
-! check_dev: r4 = device. Returns r0 = 0 if device 0 is present and
-! formatted, 1 if the device does not exist, 2 if unformatted. Also loads
-! r11 = work area. Clobbers r1-r3.
+! dev_setup: r4 = device. Loads r11 = work area and stores the device's
+! data base, block size and block count there (W_BASE, W_BSIZE, W_NBLK).
+! Returns r0 = 0, or 1 if the device does not exist. Clobbers r1-r7.
         .align  2
-check_dev:
+dev_setup:
         mov.l   lp_work_ptr, r0
         mov.l   @r0, r11
         tst     r4, r4
+        bf      1f
+        mov.l   lp_bup1, r0             ! 0: internal, 512 blocks of 64
+        mov.l   r0, @(W_BASE, r11)
+        mov     #64, r0
+        mov.l   r0, @(W_BSIZE, r11)
+        mov     #2, r0
+        shll8   r0
+        mov.l   r0, @(W_NBLK, r11)
+        rts
+        mov     #0, r0
+1:      mov     r4, r0
+        cmp/eq  #1, r0
+        bf      9f
+        sts.l   pr, @-r15               ! 1: cartridge, if one is present
+        bsr     cart_info
+        nop
+        lds.l   @r15+, pr
+        tst     r0, r0
+        bt      9f
+        mov.l   r0, @(W_NBLK, r11)
+        mov.l   r1, @(W_BSIZE, r11)
+        mov.l   lp_cart1, r0
+        mov.l   r0, @(W_BASE, r11)
+        rts
+        mov     #0, r0
+9:      rts
+        mov     #1, r0
+
+! check_dev: r4 = device. dev_setup, then returns r0 = 0 if the device is
+! present and formatted, 1 if it does not exist, 2 if unformatted.
+! Clobbers r1-r7.
+        .align  2
+check_dev:
+        sts.l   pr, @-r15
+        bsr     dev_setup
+        nop
+        lds.l   @r15+, pr
+        tst     r0, r0
         bf      8f
-        mov.l   lp_bup1, r1
+        mov.l   @(W_BASE, r11), r1
         mova    header, r0
         mov     r0, r2
         mov     #16, r3
@@ -151,11 +305,13 @@ check_dev:
 ! ---- Format(r4 = device) ----------------------------------------------------
         .align  2
 bup_format:
-        tst     r4, r4
-        bf/s    9f
-        mov     #1, r0
-        mov.l   lp_bup1, r1
-        mov     #4, r3                  ! block 0: header x 4
+        ENTER
+        bsr     dev_setup
+        nop
+        tst     r0, r0
+        bf      9f
+        mov.l   @(W_BASE, r11), r1
+        mov     #4, r3                  ! "BackUpRam Format" x 4
 1:      mova    header, r0
         mov     r0, r2
         mov     #16, r4
@@ -166,23 +322,26 @@ bup_format:
         add     #2, r1
         dt      r3
         bf      1b
-        NBLK    r3                      ! blocks 1-511: all bytes 0
-        add     #-1, r3
-        shll2   r3
-        shll2   r3
-        shll2   r3                      ! 511 * 64 bytes
+        NBLK    r3                      ! every other byte of the device: 0
+        BSIZE   r0
+        mulu.w  r0, r3
+        sts     macl, r3
+        add     #-64, r3
         mov     #0, r0
 3:      mov.b   r0, @r1
         dt      r3
         bf/s    3b
         add     #2, r1
-9:      rts
+9:      bra     leave
         nop
 
         .align  2
 header:         .ascii  "BackUpRam Format"
 lp_work_ptr:    .long   WORK_PTR
 lp_bup1:        .long   BUP1
+lp_cart_id:     .long   CART_ID
+lp_cart1:       .long   CART1
+lp_cart_span:   .long   0x100000        ! 4 Mbit cartridge address span
 
 ! ---- Stat(r4 = device, r5 = data size, r6 = BupStat*) -------------------------
 ! BupStat: totalsize, totalblock, blocksize, freesize, freeblock, datanum
@@ -199,29 +358,29 @@ bup_stat:
         nop                             ! r0 = free blocks
         NBLK    r1
         mov.l   r1, @(4, r14)
-        shll2   r1
-        shll2   r1
-        shll2   r1                      ! 512 * 64 = 32768 bytes
+        BSIZE   r2
+        mulu.w  r1, r2
+        sts     macl, r1                ! total bytes
         mov.l   r1, @r14
-        mov     #64, r1
-        mov.l   r1, @(8, r14)
+        mov.l   r2, @(8, r14)
         mov.l   r0, @(16, r14)
-        mov     #58, r1                 ! free bytes = 58 * free - 30
-        mulu.w  r0, r1
-        sts     macl, r1
+        mov     r2, r1                  ! free bytes = (blocksize - 6) * free
+        add     #-6, r1                 ! - 30 (each block: 4 header bytes and
+        mulu.w  r0, r1                  ! its 2-byte list entry; the first
+        sts     macl, r1                ! also holds the save's header)
         add     #-30, r1
         cmp/pz  r1
         bt      1f
         mov     #0, r1
 1:      mov.l   r1, @(12, r14)
-        sub     r13, r1                 ! blocks left after a save of r5 bytes
-        cmp/pz  r1
+        sub     r13, r1                 ! bytes left after a save of r5 bytes,
+        cmp/pz  r1                      ! in blocks
         bt      2f
         mov     #0, r1
-2:      shlr2   r1
-        shlr2   r1
-        shlr2   r1
-        mov.l   r1, @(20, r14)
+2:      mov     r1, r4
+        bsr     udiv
+        mov     r2, r5
+        mov.l   r0, @(20, r14)
         mov     #0, r0
 9:      bra     leave
         nop
@@ -236,8 +395,10 @@ bup_write:
         bsr     check_dev
         nop
         tst     r0, r0
-        bf      99f
-        mov     r13, r4                 ! existing save with this name?
+        bt      97f
+        bra     99f                     ! (out of reach of bf)
+        nop
+97:     mov     r13, r4                 ! existing save with this name?
         bsr     find_save
         mov     #2, r5
         tst     r0, r0
@@ -254,16 +415,16 @@ bup_write:
         mov.l   r0, @-r15
         mov     r13, r0
         mov.l   @(28, r0), r12          ! r12 = data size (dir offset 28)
-        mov     r12, r4                 ! blocks = 1 + (size + 29) / 58
-        add     #29, r4
-        bsr     udiv
-        mov     #58, r5
-        add     #1, r0
+        bsr     blocks_for              ! r0 = blocks needed
+        mov     r12, r4
         mov     r0, r10                 ! r10 = blocks needed
         mov.l   @r15+, r0
+        cmp/hi  r0, r10                 ! more than are free, or more than
+        bt      98f                     ! the work area's block list holds
+        LCAP    r0
         cmp/hi  r0, r10
         bf      2f
-        bra     99f
+98:     bra     99f
         mov     #4, r0
 2:      LIST    r1                      ! list[0..r10-1] = first free blocks
         MAP     r2
@@ -499,12 +660,9 @@ bup_dir:
         add     #24, r7
         bsr     copy_out
         mov     #8, r6
-        mov     r14, r0                 ! blocks = (size + 29) / 58 + 1
+        mov     r14, r0                 ! blocks
+        bsr     blocks_for
         mov.l   @(28, r0), r4
-        add     #29, r4
-        bsr     udiv
-        mov     #58, r5
-        add     #1, r0
         mov     r14, r1
         add     #32, r1
         mov.w   r0, @r1
@@ -658,18 +816,19 @@ c_365:          .word   365
 ! Register conventions inside the library: r11 = work area (set by
 ! check_dev), r8/r9 = current block / byte index for the byte helpers and
 ! the stream, r10 = next block-list index used when the stream crosses into
-! a new block (list at r11 + W_LIST).
+! a new block (list at LIST, r11 + 0x1040).
 
 ! byte_addr: r1 = address of data byte r9 of block r8. Clobbers r0.
         .align  2
 byte_addr:
-        mov     r8, r1
-        shll8   r1
-        shlr    r1                      ! block * 128
+        BSIZE   r0
+        mulu.w  r8, r0
+        sts     macl, r1
+        shll    r1                      ! block * blocksize * 2
         mov     r9, r0
         shll    r0
         add     r0, r1
-        mov.l   c_bup1, r0
+        mov.l   @(W_BASE, r11), r0
         rts
         add     r0, r1
 
@@ -721,12 +880,12 @@ copy_out:
         rts
         nop
 
-! st_cross: if the stream is at the end of a block (r9 = 64), continue at
-! byte 4 of block list[r10++]. Crossing only happens when a byte is actually
-! read or written there, so the list is never read past its end.
+! st_cross: if the stream is at the end of a block (r9 = block size),
+! continue at byte 4 of block list[r10++]. Crossing only happens when a byte
+! is actually read or written there, so the list is never read past its end.
 ! Returns T = 1 if it crossed. Clobbers r0, r1.
 st_cross:
-        mov     #64, r0
+        BSIZE   r0
         cmp/eq  r0, r9
         bf      1f
         mov     r10, r0
@@ -802,13 +961,14 @@ read_list:
         or      r0, r5                  ! r5 = entry
         tst     r5, r5
         bt      8f
-        mov     #2, r0                  ! must be a data block (2..511)
+        mov     #2, r0                  ! must be a data block (2..count-1)
         cmp/hs  r0, r5
         bf      9f
         NBLK    r0
         cmp/hs  r0, r5
         bt      9f
-        cmp/hs  r0, r7                  ! and not more than 512 entries
+        LCAP    r0                      ! and fit in the work area's list
+        cmp/hs  r0, r7
         bt      9f
         mov     r7, r0
         shll    r0
@@ -952,6 +1112,21 @@ block_size_field:
         rts
         nop
 
+! blocks_for: r4 = data size; r0 = blocks a save of that size takes:
+! 1 + (size + 29) / (blocksize - 6). The first block holds the 34-byte save
+! header, every block 4 header bytes, and each further block needs a 2-byte
+! list entry (the list ends with 0x0000). Clobbers r1, r2, r4, r5.
+blocks_for:
+        sts.l   pr, @-r15
+        add     #29, r4
+        BSIZE   r5
+        bsr     udiv
+        add     #-6, r5
+        add     #1, r0
+        lds.l   @r15+, pr
+        rts
+        nop
+
 ! udiv: r0 = r4 / r5, r1 = r4 % r5 (unsigned). Clobbers r2, r4.
 udiv:
         mov     #0, r1
@@ -967,6 +1142,3 @@ udiv:
         rts
         mov     r4, r0
 
-        .align  2
-c_work_ptr:     .long   WORK_PTR
-c_bup1:         .long   BUP1
