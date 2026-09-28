@@ -265,7 +265,7 @@ sc_clear_sem:
 ! 0x06000280 ChangeScuInterruptPriority(r4 = table of 32 longwords)
         .align  2
 sc_change_prio:
-        mov.l   c_prio_tab, r1
+        mov.l   c_prio_tab_c, r1
         mov     #32, r2
 1:      mov.l   @r4+, r0
         mov.l   r0, @r1
@@ -387,7 +387,7 @@ scu_dispatch:
         mov.l   r2, @-r15               ! old mask
         add     #-0x40, r0
         shll2   r0                      ! r0 = (vector - 0x40) * 4
-        mov.l   c_prio_tab, r3
+        mov.l   c_prio_tab_c, r3
         mov.l   @(r0, r3), r3
         mov     r3, r4
         shlr16  r4                      ! SR while the handler runs
@@ -396,7 +396,7 @@ scu_dispatch:
         mov.l   r2, @r1
         mov.l   c_scu_ims, r1
         mov.l   r2, @r1
-        mov.l   c_user_tab, r5
+        mov.l   c_user_tab_c, r5
         mov.l   @(r0, r5), r5
         ldc     r4, sr
         jsr     @r5
@@ -438,6 +438,8 @@ c_entries:      .long   SCU_RAM         ! the Work RAM copy of scu_entries
 c_user_tab:     .long   USER_TAB
 c_user_base:    .long   0x06000900      ! cached, see MASK_SHADOW
 c_prio_tab:     .long   PRIO_TAB
+c_prio_tab_c:   .long   PRIO_TAB - 0x20000000 ! cached (dispatcher, ChangePrio)
+c_user_tab_c:   .long   USER_TAB - 0x20000000 ! cached (dispatcher)
 c_semaphores:   .long   SEMAPHORES
 c_mask_shadow:  .long   MASK_SHADOW
 c_clock_mode:   .long   CLOCK_MODE
