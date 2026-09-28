@@ -29,11 +29,10 @@
         .equ    SMPC_SSHOFF, 0x03           ! hold the slave SH-2 in reset
         .equ    SMPC_SNDOFF, 0x07           ! hold the sound 68000 in reset
 
-! cpu_init: quiesce the master SH-2 on-chip peripherals (interrupt priorities,
-! DMAC, serial port, watchdog) and give them their usual vector numbers.
-! TODO: bus state controller (BCR1/2, WCR, MCR, refresh) and SDRAM mode setup.
-! Emulators ignore it, real hardware and MiSTer need it; values must come from
-! the SH7604 manual and the Saturn memory map, not guessed.
+! cpu_init: set up the bus state controller (bsc_tab_l), quiesce the master
+! SH-2 on-chip peripherals (interrupt priorities, DMAC, serial port,
+! watchdog) and give them their usual vector numbers.
+! TODO: SDRAM refresh (RTCSR/RTCOR) and mode setup for real hardware.
         .align  2
 cpu_init:
         mova    cpu_tab, r0
@@ -45,12 +44,14 @@ cpu_init:
         mov     #0, r0
         mov.b   r0, @r1                 ! SCR = 0: serial port off
         mov.l   c_dmaor, r1             ! DMAOR = 1: DMA master enable, flags
-        mov     #1, r0                  ! clear. Games start SH-2 DMA channels
-        mov.l   r0, @r1                 ! and wait for TE (Virtua Cop hangs
-                                        ! with DME left 0 on MiSTer)
+        mov     #1, r0                  ! clear
+        mov.l   r0, @r1
         sts.l   pr, @-r15               ! (stack not used yet: WRAM not
         bsr     poke_w                  !  cleared, but pushes are harmless)
         nop
+        mova    bsc_tab_l, r0
+        bsr     poke_l
+        mov     r0, r4
         bsr     cpu_vectors
         nop
         mova    vec_tab_l, r0
@@ -87,6 +88,9 @@ slave_start:
         .endif
         bsr     cpu_vectors
         nop
+        mova    bsc_tab_l, r0
+        bsr     poke_l
+        mov     r0, r4
         mova    vec_tab_l, r0
         bsr     poke_l
         mov     r0, r4
@@ -132,6 +136,19 @@ vec_tab_l:
         .long   0xFFFFFFA8, 0x6C        ! VCRDMA1
         .long   0xFFFFFFA0, 0x6D        ! VCRDMA0
         .long   0xFFFFFF0C, 0x6E        ! VCRDIV
+        .long   0
+! Bus state controller, both CPUs (longword writes, 0xA55A key in the upper
+! half; the MASTER bit of BCR1 is read-only). The reset values (BCR1 0x03F0,
+! WCR 0xAAFF: the longest wait states) may leave the two CPUs contending for
+! the bus differently from a configured machine (suspected on MiSTer: House
+! of the Dead's master never wins a TAS.B lock the slave keeps taking).
+! Values as the Yabause HLE sets them for the slave (reference only).
+        .align  2
+bsc_tab_l:
+        .long   0xFFFFFFE0, 0xA55A03F1  ! BCR1: DRAM field 1 (area 3)
+        .long   0xFFFFFFE4, 0xA55A00FC  ! BCR2: bus widths as at reset
+        .long   0xFFFFFFE8, 0xA55A5555  ! WCR: one wait state per area
+        .long   0xFFFFFFEC, 0xA55A0070  ! MCR: SDRAM/DRAM timing
         .long   0
 
 

@@ -153,8 +153,8 @@ c_sw_key:       .word   0xA500
 ! PC ring; row 4: slave starts, slave entry and stack; rows 5-8: call
 ! counters in table order; row 9: the slave's last watchdog sample (PC,
 ! PR, SR) and tick count; rows 10-13: the 64 bytes at 0x060C8000 (Virtua
-! Cop's master/slave variables; row 0 still shows the IP.BIN master stack
-! top); rows 15-26: the 192 bytes below
+! Cop's master/slave variables; row 0 shows the IP.BIN master stack);
+! rows 15-26: the 192 bytes below
 ! 0x060C8000, where Virtua Cop's main program puts its stack; 4 longwords
 ! per row, lowest address first) and halt.
 ! The marker is cleared first, so the next reset boots normally. Uses no
@@ -230,9 +230,9 @@ diag_postmortem:
         mov     #9, r10
         bsr     pm_dump
         nop
-        mov.l   c_pm_ip_sp, r1          ! rows 10-25: 256 bytes below the
-        mov.l   @r1, r8                 ! game's stack top (0x06002000 if
-        tst     r8, r8                  ! the header leaves it 0)
+        mov.l   c_pm_ip_sp, r1          ! row 0: the IP.BIN master stack
+        mov.l   @r1, r8                 ! (0x06002000 if the header leaves
+        tst     r8, r8                  ! it 0)
         bf      2f
         mov.l   c_pm_def_sp, r8
 2:      mov     r8, r4
@@ -288,7 +288,7 @@ c_pm_magic:     .long   MAGIC
 c_pm_diag:      .long   DIAG
 c_pm_ring:      .long   DIAG_RING
 c_pm_calls:     .long   DIAG_CALLS
-c_pm_ip_sp:     .long   0x260020F0
+c_pm_ip_sp:     .long   0x260020E8      ! IP.BIN master stack field
 c_pm_def_sp:    .long   0x06002000
 p_pm_puts:      .long   con_puts
 c_pm_sp2:       .long   0x060C8000
