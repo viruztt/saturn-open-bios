@@ -215,7 +215,13 @@ disassembled.
   0x06000250, SSHON) and shows its state: the other BIOS enters the
   slave's code with SR = 0, ours with 0xF0. Now SR = 0 too, with a default
   FRT input capture handler (clears ICF) on both CPUs so a pending
-  capture does not loop; the slave no longer runs SDRAM refresh.
+  capture does not loop; the slave no longer runs SDRAM refresh. Page 3 runs a
+  handler through the BIOS services: priority and mask handling matched,
+  but a level-0 DMA end reached the handler about 6 FRT ticks (48 cycles)
+  later than with the other BIOS. With the SCU entries and dispatcher
+  copied to Work RAM (0x06000620) Virtua Cop's zoom-out no longer drops
+  3D on MiSTer (owner's report), although the measured latency stayed
+  about the same; the remaining gap is not explained yet.
 - Backup RAM manager (`src/menu.s`, 2026-09-28): opens when the drive
   reports no disc or an open tray, when Start is held at the end of the
   boot, or with Start on a failed boot. Lists the saves on the internal
@@ -257,8 +263,8 @@ is the quick automated check.
 
 "No CD music" was before the CD hand-over change of 2026-09-28. On
 2026-09-28 the owner reports that all eight games load on MiSTer with CD
-music, using cues without the PREGAP line (see status); Virtua Cop shows
-background flicker (under investigation, possibly the light-gun flash).
+music, using cues without the PREGAP line (see status). Virtua Cop's
+missing 3D in its first zoom-out is fixed (see status).
 
 Fixes found this way:
 - Slave SH-2 start path (it starts at the reset vector too).
