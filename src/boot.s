@@ -269,7 +269,24 @@ readouts_done:
         mov.l   p_menu, r0
         jsr     @r0
         mov     #1, r4
-27:     mov.l   p_boot_game, r0
+27:
+        .ifdef  VDP2CLR                 ! (test builds: VDP2 registers all 0,
+        mov.l   91f, r1                 !  display off, instead of the
+        mov     #0, r0                  !  console's setup, at hand-over)
+        mov.w   92f, r2
+1:      mov.w   r0, @r1
+        dt      r2
+        bf/s    1b
+        add     #2, r1
+        bra     93f
+        nop
+        .align  2
+91:     .long   0x25F80000
+92:     .word   0x120 / 2
+        .align  2
+93:
+        .endif
+        mov.l   p_boot_game, r0
         jmp     @r0
         nop
 
