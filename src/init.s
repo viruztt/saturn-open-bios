@@ -77,7 +77,8 @@ cpu_vectors:
 ! vectors, FRT input capture interrupt (priority 15, enabled: the master
 ! signals the slave through it) and VBR (0x06000400), take its stack from
 ! 0x060002AC (filled at hand-over from the IP.BIN header, 0x06001000 by
-! default) and jump to the entry address the game stored at 0x06000250.
+! default), purge and enable its cache, and jump to the entry address the
+! game stored at 0x06000250.
 ! Interrupts stay masked in SR; the game lowers the mask itself.
         .align  2
 slave_start:
@@ -116,7 +117,12 @@ slave_start:
         tst     r15, r15
         bf      1f
         mov.l   c_ssp_default, r15
-1:      mov.l   c_slave_entry, r1
+1:      mov.l   c_slave_ccr, r1         ! cache purged and enabled, as on the
+        mov     #0x10, r0               ! master at hand-over: games that do
+        mov.b   r0, @r1                 ! not enable it themselves would run
+        mov     #0x01, r0               ! their slave code uncached (MiSTer
+        mov.b   r0, @r1                 ! models the speed difference)
+        mov.l   c_slave_entry, r1
         mov.l   @r1, r1
         jmp     @r1
         nop
@@ -368,6 +374,7 @@ c_vdp1_vram:    .long   VDP1_VRAM
 c_wtcsr:        .long   0xFFFFFE80
 c_dmaor:        .long   0xFFFFFFB0
 c_slave_vbr:    .long   0x06000400
+c_slave_ccr:    .long   0xFFFFFE92
 c_tier:         .long   0xFFFFFE10
         .ifdef  DIAG
 c_diag_slave:   .long   DIAG_SLAVE
