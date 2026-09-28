@@ -195,8 +195,10 @@ disassembled.
     the image, its audio reads compute the file position as if it were and
     so play the end of the data track, which the firmware starts reading
     just before track 2. The tone disc's PREGAP cue did not show it because
-    its image stores silence there. Likely a MiSTer image-handling issue,
-    not the BIOS; to be confirmed with cues that drop the PREGAP line.
+    its image stores silence there. Confirmed on 2026-09-28: with the
+    PREGAP line removed from its cue, Sonic R plays its CD music on MiSTer
+    with this BIOS. A MiSTer image-handling issue, not the BIOS;
+    workarounds: such cues, or CHD images (which store the pregap).
 - Debug tools: fatal exceptions (vectors 4/6/9/10) show a crash screen with
   vector, PC, SR, PR, SP and the 32 bytes around PC. `make diag` builds a
   diagnostics BIOS (`src/diag.s`): it counts system calls, samples the
@@ -219,7 +221,7 @@ is the quick automated check.
 
 | Title | MiSTer | Kronos | Yabause 0.9.15 | Notes |
 |---|---|---|---|---|
-| Sonic R (EU) | Runs, no CD music | Title screen | | CD music: see status |
+| Sonic R (EU) | Runs; CD music with a cue without PREGAP | Title screen | | CD music: see status |
 | Clockwork Knight (JP) | Runs, CD music | Runs | | |
 | Die Hard Arcade (JP) | Runs | Title screen | | |
 | Virtua Cop (JP) | Boots, no CD music | Boots, attract mode | Boots, attract mode | Needed the bus state controller setup on MiSTer |
