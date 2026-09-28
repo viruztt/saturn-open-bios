@@ -244,7 +244,10 @@ is the quick automated check.
 | The House of the Dead (JP) | Boots, no CD music | Boots to title screen | Crashes (jumps into VDP1 RAM) | Yabause also fails with its own HLE BIOS |
 | Shutsudo! Minisuka Police (JP) | Boots | Black screen | Black screen | Same in the emulators with their own HLE BIOS; boots on MiSTer |
 
-"No CD music" was before the CD hand-over change of 2026-09-28.
+"No CD music" was before the CD hand-over change of 2026-09-28. On
+2026-09-28 the owner reports that all eight games load on MiSTer with CD
+music, using cues without the PREGAP line (see status); Virtua Cop shows
+background flicker (under investigation, possibly the light-gun flash).
 
 Fixes found this way:
 - Slave SH-2 start path (it starts at the reset vector too).
