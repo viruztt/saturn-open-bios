@@ -199,6 +199,10 @@ disassembled.
     PREGAP line removed from its cue, Sonic R plays its CD music on MiSTer
     with this BIOS. A MiSTer image-handling issue, not the BIOS;
     workarounds: such cues, or CHD images (which store the pregap).
+  - Die Hard Arcade lost parts of characters and Panzer Dragoon's FMV had
+    missing bands: the slave ran the game's code with its cache off (only
+    the master's was enabled at hand-over). slave_start now purges and
+    enables the slave's cache; both games play properly on MiSTer.
 - Debug tools: fatal exceptions (vectors 4/6/9/10) show a crash screen with
   vector, PC, SR, PR, SP and the 32 bytes around PC. `make diag` builds a
   diagnostics BIOS (`src/diag.s`): it counts system calls, samples the
@@ -223,10 +227,10 @@ is the quick automated check.
 |---|---|---|---|---|
 | Sonic R (EU) | Runs; CD music with a cue without PREGAP | Title screen | | CD music: see status |
 | Clockwork Knight (JP) | Runs, CD music | Runs | | |
-| Die Hard Arcade (JP) | Runs | Title screen | | |
+| Die Hard Arcade (JP) | Runs | Title screen | | Needed the slave cache enabled on MiSTer |
 | Virtua Cop (JP) | Boots, no CD music | Boots, attract mode | Boots, attract mode | Needed the bus state controller setup on MiSTer |
 | Virtua Cop 2 (EU) | Boots, no CD music | Boots | | Needed the bus state controller setup on MiSTer |
-| Panzer Dragoon (JP) | Runs with a corrected cue, no CD music | Boots, intro plays | Boots, intro movie plays | The dump's cue trips the MiSTer (see status) |
+| Panzer Dragoon (JP) | Runs with a corrected cue | Boots, intro plays | Boots, intro movie plays | The dump's cue trips the MiSTer (see status) |
 | The House of the Dead (JP) | Boots, no CD music | Boots to title screen | Crashes (jumps into VDP1 RAM) | Yabause also fails with its own HLE BIOS |
 | Shutsudo! Minisuka Police (JP) | Boots | Black screen | Black screen | Same in the emulators with their own HLE BIOS; boots on MiSTer |
 
