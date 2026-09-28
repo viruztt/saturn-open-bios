@@ -187,7 +187,15 @@ cd_ready_n:
         bt      8f
         cmp/eq  #3, r0                  ! PLAY
         bt      8f
-        bsr     vbl_wait
+        cmp/eq  #6, r0                  ! tray open or no disc: give it
+        bt      2f                      ! about 2 s more, not the full wait
+        cmp/eq  #7, r0
+        bf      3f
+2:      mov     #120, r0
+        cmp/hi  r0, r8
+        bf      3f
+        mov     r0, r8
+3:      bsr     vbl_wait
         nop
         dt      r8
         bf      1b

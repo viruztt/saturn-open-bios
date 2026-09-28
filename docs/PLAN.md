@@ -203,6 +203,16 @@ disassembled.
     missing bands: the slave ran the game's code with its cache off (only
     the master's was enabled at hand-over). slave_start now purges and
     enables the slave's cache; both games play properly on MiSTer.
+- Backup RAM manager (`src/menu.s`, 2026-09-28): opens when the drive
+  reports no disc or an open tray, when Start is held at the end of the
+  boot, or with Start on a failed boot. Lists the saves on the internal
+  backup RAM and the cartridge (name, comment, size in blocks, free space)
+  and deletes, copies between the two, or formats, each after an A/B
+  confirmation. Start leaves (boots the disc, or starts the BIOS over).
+  Pad input is SMPC INTBACK (port 1, standard pad). Its work area is in
+  Low Work RAM, so a loaded game is untouched. Test builds: MENUTEST
+  always opens it, MENUSCRIPT=1/2 replay a button script (copy to the
+  cartridge / delete from it); both OK in Kronos.
 - Debug tools: fatal exceptions (vectors 4/6/9/10) show a crash screen with
   vector, PC, SR, PR, SP and the 32 bytes around PC. `make diag` builds a
   diagnostics BIOS (`src/diag.s`): it counts system calls, samples the

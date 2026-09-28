@@ -152,7 +152,23 @@ readouts_done:
         ! IP.BIN header was wrong, else the start of the last sector read
         tst     r10, r10
         bt      20f
-        mov.l   p_raw0, r8              ! FAD 150 if IP.BIN was the problem,
+        mov.l   p_cd_err, r1            ! no disc (drive reported tray open
+        mov.l   @r1, r0                 ! or no disc while waiting to be
+        shlr16  r0                      ! ready: CD_ERR 0500s6xx/0500s7xx):
+        shlr8   r0                      ! straight to the backup RAM manager
+        cmp/eq  #5, r0
+        bf      24f
+        mov.l   @r1, r0
+        shlr8   r0
+        and     #0x0F, r0
+        cmp/eq  #6, r0
+        bt      25f
+        cmp/eq  #7, r0
+        bf      24f
+25:     mov.l   p_menu, r0
+        jsr     @r0
+        mov     #0, r4
+24:     mov.l   p_raw0, r8              ! FAD 150 if IP.BIN was the problem,
         mov.l   p_hdr, r1               ! else the last sector read
         mov.l   @r1, r0
         mov.l   c_sega, r1
@@ -210,8 +226,24 @@ readouts_done:
         mov     #38, r0
         cmp/hs  r0, r11
         bf      21b
-        bra     idle
+        mova    msg_start, r0           ! failed: Start opens the backup RAM
+        mov     r0, r4                  ! manager
+        mov     #2, r5
+        mov.l   p_con_puts, r0
+        jsr     @r0
+        mov     #26, r6
+26:     mov.l   p_vbl_wait_b, r0
+        jsr     @r0
         nop
+        mov.l   p_pad_read, r0
+        jsr     @r0
+        nop
+        mov.w   c_pad_start_b, r1
+        tst     r1, r0
+        bt      26b
+        mov.l   p_menu, r0
+        jsr     @r0
+        mov     #0, r4
 20:
         add     #1, r9
         mova    msg_boot, r0
@@ -225,7 +257,19 @@ readouts_done:
         bra     idle
         nop
         .endif
-        mov.l   p_boot_game, r0
+        mov.l   p_pad_read, r0          ! Start held: backup RAM manager first
+        jsr     @r0
+        nop
+        mov.w   c_pad_start_b, r1
+        .ifdef  MENUTEST                ! (test builds: always open it)
+        mov     r1, r0
+        .endif
+        tst     r1, r0
+        bt      27f
+        mov.l   p_menu, r0
+        jsr     @r0
+        mov     #1, r4
+27:     mov.l   p_boot_game, r0
         jmp     @r0
         nop
 
@@ -258,6 +302,12 @@ p_sirej:        .long   CD_SIREJ
 p_dropped:      .long   CD_DROPPED
 p_freeblk:      .long   CD_FREEBLK
 p_hdr:          .long   CD_HDR
+p_cd_err:       .long   CD_ERR
+p_menu:         .long   menu_main
+p_pad_read:     .long   pad_read
+p_vbl_wait_b:   .long   vbl_wait
+c_pad_start_b:  .word   0x0800
+        .align  2
 p_toc:          .long   CD_TOC
 p_leadout:      .long   CD_TOC + 101 * 4
 c_sega:         .long   0x53454741      ! "SEGA"
@@ -346,3 +396,5 @@ msg_fra:        .asciz  "1st read addr"
 msg_frs:        .asciz  "1st read size"
         .align  2
 msg_boot:       .asciz  "Booting disc..."
+        .align  2
+msg_start:      .asciz  "Start: backup RAM manager"
