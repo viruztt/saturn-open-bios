@@ -329,6 +329,11 @@ Fixes found this way:
   (as Yabause's HLE BIOS does). The BupDir language byte is at offset 23
   (SBL layout); Yabause's HLE uses 22. Save format not yet checked against a
   dump from real hardware. BUP_Init ignores the library area.
+  Blank internal backup RAM is formatted at boot. On MiSTer the core keeps
+  backup RAM in memory and writes the game's .sav only with Autosave on
+  (or "Save Backup RAM" in the OSD); confirmed across a power cycle
+  2026-09-29. The manager (Start at boot, or no disc) works on MiSTer since
+  the pad fixes of 2026-09-29 (INTBACK after VBlank-out, status compare).
 - SetScuInterruptMask writes the SCU mask from the slave CPU too (Yabause
   only does it on the master).
 - The first read file is loaded whole; sizes above the CD buffer (200
