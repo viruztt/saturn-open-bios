@@ -178,9 +178,8 @@ pad_read:
         or      r0, r2
         mov.l   c_pad_raw, r1
         mov.l   r2, @r1
-        mov.b   @r3, r0                 ! port 1 status
-        extu.b  r0, r0
-        mov     #0, r2
+        mov.b   @r3, r0                 ! port 1 status (sign-extended, as
+        mov     #0, r2                  ! is the immediate below)
         cmp/eq  #0xF1, r0
         bf      8f
         mov.b   @(2, r3), r0            ! peripheral ID: pad, 3D pad, wheel
@@ -275,10 +274,6 @@ loop:
         jmp     @r0
         nop
 30:
-        .ifdef  MENUSCRIPT              ! (test builds: scripted buttons)
-        bsr     script_pad
-        nop
-        .else
         bsr     pad_read
         nop
         mov.l   r0, @-r15               ! raw SMPC reply, top right
@@ -288,8 +283,14 @@ loop:
         mov.l   p_con_puthex_m, r0
         jsr     @r0
         mov     #0, r6
-        mov.l   @r15+, r0
+        .ifdef  MENUSCRIPT              ! (test builds: add scripted buttons)
+        bsr     script_pad
+        nop
+        mov.l   @r15, r1
+        or      r0, r1
+        mov.l   r1, @r15
         .endif
+        mov.l   @r15+, r0
         mov.l   @(V_PREV, r14), r1
         mov.l   r0, @(V_PREV, r14)
         not     r1, r1
