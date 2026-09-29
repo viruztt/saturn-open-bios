@@ -34,6 +34,7 @@
 
         .section .text
         .global bup_init
+        .global bup_autoformat
 
         .equ    BUP1,       0x20180001      ! internal: data byte 0 of block 0
         .equ    CART_ID,    0x24FFFFFF      ! A-bus cartridge ID byte
@@ -302,6 +303,39 @@ check_dev:
         mov     #2, r0
 
 
+! bup_autoformat: at boot, format the internal backup RAM if it holds no
+! format header (new or lost memory), as a Saturn does. Uses a work area in
+! Low Work RAM and clears the work pointer again afterwards. r0 = 1 if it
+! formatted. Preserves r8-r14.
+        .align  2
+bup_autoformat:
+        sts.l   pr, @-r15
+        mov.l   r11, @-r15
+        mov.l   lp_work_ptr, r1
+        mov.l   lp_boot_work, r0
+        mov.l   r0, @r1
+        .ifdef  BUPWIPE                 ! (test builds: spoil the header)
+        mov.l   lp_bup1, r1
+        mov     #0, r0
+        mov.b   r0, @r1
+        .endif
+        bsr     check_dev
+        mov     #0, r4
+        cmp/eq  #2, r0
+        bf      1f
+        bsr     bup_format
+        mov     #0, r4
+        bra     2f
+        mov     #1, r0
+1:      mov     #0, r0
+2:      mov.l   lp_work_ptr, r1
+        mov     #0, r2
+        mov.l   r2, @r1
+        mov.l   @r15+, r11
+        lds.l   @r15+, pr
+        rts
+        nop
+
 ! ---- Format(r4 = device) ----------------------------------------------------
         .align  2
 bup_format:
@@ -338,6 +372,7 @@ bup_format:
         .align  2
 header:         .ascii  "BackUpRam Format"
 lp_work_ptr:    .long   WORK_PTR
+lp_boot_work:   .long   0x20204000      ! bup_autoformat's work area
 lp_bup1:        .long   BUP1
 lp_cart_id:     .long   CART_ID
 lp_cart1:       .long   CART1

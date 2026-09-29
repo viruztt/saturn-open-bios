@@ -112,6 +112,9 @@ step:
         nop
 
 steps_done:
+        mov.l   p_bup_auto, r0          ! blank internal backup RAM: format it
+        jsr     @r0
+        nop
         mov     r9, r13                 ! blank row between steps and readouts
         ! Read back a few live values: (label, address, 0 = word / 1 = long /
         ! 2 = NUL-terminated string)
@@ -332,6 +335,7 @@ p_freeblk:      .long   CD_FREEBLK
 p_hdr:          .long   CD_HDR
 p_cd_err:       .long   CD_ERR
 p_menu:         .long   menu_main
+p_bup_auto:     .long   bup_autoformat
 p_pad_read:     .long   pad_read
 p_vbl_wait_b:   .long   vbl_wait
 c_pad_start_b:  .word   0x0800
