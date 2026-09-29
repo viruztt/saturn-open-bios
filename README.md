@@ -61,8 +61,35 @@ On MiSTer, use CHD images, or cue sheets without a `PREGAP` line: with an
 unstored pregap the MiSTer's drive emulation plays the wrong audio (the end
 of the data track) instead of the CD music. This is not a BIOS issue.
 
-Not supported: the audio CD player, and Video CD / Photo CD (they need the
-MPEG card).
+## Known limitations
+
+- **No audio CD player.** A music CD does not play; the "CD player" system
+  call some games use when quitting does nothing.
+- **No Video CD / Photo CD.** They need the MPEG card, which the BIOS
+  reports as absent (the MiSTer core does not emulate it either).
+- **No floppy drive** (the Saturn's backup floppy): only the internal
+  backup RAM and backup RAM cartridges.
+- **No stereo/mono setting**: where Sega's BIOS keeps it is not publicly
+  documented. The language setting works, but the MiSTer core forgets it
+  when the core is reloaded (loading a game image counts).
+- **The clock is shown, not set**: MiSTer and the emulators take it from
+  the host.
+- **Games or tools that call into Sega's BIOS ROM directly** (rather than
+  through the documented system calls) do not work, for example Pseudo
+  Saturn Kai's cheat loader (see below). The disc's security code is never
+  run and the region is not enforced.
+- **Interrupts are a little slower than Sega's**: about 16-32 CPU cycles
+  more per interrupt before a game's handler runs (measured on MiSTer).
+  No game has been seen to mind.
+- **Not tested on a real Saturn**: only on MiSTer and in emulators (Kronos,
+  Yabause). A real console also needs the SDRAM set-up done by Sega's BIOS
+  checked more closely.
+- **Details not yet checked against real hardware**: the backup RAM save
+  format (only against emulators and games), clock changes skip the
+  standby handshake of the real hardware, and first programs larger than
+  the CD block's buffer (200 sectors) have not been tried.
+- In Kronos some games stop earlier than on MiSTer (see the table); on
+  MiSTer all tested games play.
 
 ### Pseudo Saturn Kai
 
@@ -107,16 +134,35 @@ program that tests the BIOS services), `tools/` build and test scripts,
 
 ## How it was made
 
-Everything here is written from scratch in SH-2 assembly. No code or data
-from Sega's BIOS is included, and Sega's BIOS was never disassembled; the
-original was only used as a black box on MiSTer to compare the hardware
-state it leaves behind. The disc's security code is never run.
+Everything here is written in SH-2 assembly for this project. No code or
+data from Sega's BIOS is included, and Sega's BIOS was never disassembled;
+the original was only used as a black box on MiSTer to compare the
+hardware state it leaves behind. The disc's security code is never run.
 
-Hardware behaviour was worked out from public documentation and by reading
-open-source projects as references: the Yabause, Kronos and Mednafen
-(Beetle Saturn) emulators, the MiSTer Saturn core, and the iapetus and
-Pseudo Saturn homebrew libraries. None of their code is copied here; they
-helped to understand what the hardware and games expect.
+## Credits
+
+- **[Yabause](https://github.com/Yabause/yabause)** (GPL-2.0-or-later) -
+  the main reference. Its HLE BIOS (`bios.c`) is what the system calls and
+  the backup RAM library follow in behaviour, including the default SCU
+  interrupt priority order; the CD block command protocol follows its CD
+  block emulation (`cs2.c`), the disc boot path its quick-load code, and
+  several post-boot register values its set-up. Yabause 0.9.15 is also the
+  automated test emulator (`make run`).
+- **[Kronos](https://github.com/FCare/Kronos)** (GPL-2.0-or-later) - the
+  main emulator for testing (RetroArch core), and a reference for the SMPC.
+- **Mednafen / Beetle Saturn** (GPL-2.0-or-later) - a reference for the
+  SMPC and cartridges.
+- **[MiSTer Saturn core](https://github.com/MiSTer-devel/Saturn_MiSTer)**
+  by srg320 - the target hardware, and a reference for the SMPC, cartridge
+  and SCU behaviour.
+- **[iapetus](https://github.com/cyberwarriorx/iapetus)** and
+  **[Pseudo Saturn](https://github.com/cyberwarriorx/pseudosaturn)** by
+  Theo Berkau (CyberWarriorX), and **[libyaul](https://github.com/yaul-org/libyaul)** -
+  documentation of the "load CD" system calls and of the SMPC commands.
+- **Pseudo Saturn Kai** by cafe-alpha - used to test cartridge boot.
+
+Their code was read to understand what the hardware and games expect; this
+BIOS is written from scratch, and like Yabause and Kronos it is GPL.
 
 ## Licence
 
