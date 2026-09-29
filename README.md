@@ -57,8 +57,8 @@ Games I own and tried, on MiSTer (Saturn core) and in Kronos (RetroArch).
 |---|---|---|---|---|
 | Clockwork Knight | JP | Plays | Plays | |
 | Die Hard Arcade | JP | Plays | Title screen | |
-| House of the Dead, The | JP | Plays | Title screen | Some flicker and slowdown; may be the original game |
-| Panzer Dragoon | JP | Plays | Intro plays | FMV fine |
+| House of the Dead, The | JP | Plays | Title screen | |
+| Panzer Dragoon | JP | Plays | Intro plays | |
 | Sonic R | EU | Plays | Title screen | |
 | Virtua Cop | JP | Plays | Attract mode | |
 | Virtua Cop 2 | EU | Plays | Boots | |
