@@ -32,6 +32,7 @@
         .global CD_DROPPED
         .global CD_FREEBLK
         .global vbl_wait
+        .global cd_status
 
         .equ    CD_HIRQ,    0x25890008
         .equ    CD_CR1,     0x25890018      ! CR2..CR4 follow at +4, +8, +12
@@ -159,7 +160,26 @@ cd_auth:
 ! open or a missing disc simply never gets there. Returns r0 = 0, or 1 with
 ! CD_ERR = 05xxxxxx (last CR1: status in the high byte).
 ! cd_ready_quiet: the same for r5 frames, without recording an error.
+! cd_status: one Get Status; r0 = drive status (low nibble of CR1 high byte),
+! or -1 if the CD block did not answer.
         .align  2
+cd_status:
+        sts.l   pr, @-r15
+        mova    cmd_status_e, r0
+        bsr     cd_cmdt
+        mov     r0, r4
+        tst     r0, r0
+        bf      1f
+        mov.l   c_cd_resp_e, r1
+        mov.w   @r1, r0
+        shlr8   r0
+        bra     2f
+        and     #0x0F, r0
+1:      mov     #-1, r0
+2:      lds.l   @r15+, pr
+        rts
+        nop
+
 cd_ready:
         mov.l   c_ready_frames_e, r5
         bra     cd_ready_n

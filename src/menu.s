@@ -1,7 +1,9 @@
 ! SPDX-License-Identifier: GPL-2.0-or-later
 ! SaturnOpenBios - backup RAM manager and control pad input (clean-room)
 !
-! menu_main(r4 = 1 if a disc is ready to boot, 0 if not): lists the saves on
+! menu_main(r4 = 1 if a disc is ready to boot, 0 if not, 2 if there is no
+! disc: then the drive is polled and the BIOS starts over once one is
+! ready): lists the saves on
 ! the internal backup RAM and, if one is plugged in, the backup RAM
 ! cartridge, and lets the user delete a save, copy it to the other device
 ! or format a device (each asks for confirmation). Start leaves: back to
@@ -59,6 +61,7 @@
         .equ    V_DISC,     28              ! 1 if a disc is ready to boot
         .equ    V_SCR,      32              ! (MENUSCRIPT) next script entry
         .equ    V_SCRN,     36              ! (MENUSCRIPT) frames left in it
+        .equ    V_POLL,     40              ! frames since the last drive poll
 
         .equ    DEV_ROW,    2
         .equ    LIST_ROW,   4               ! first list row
@@ -227,6 +230,7 @@ menu_main:
         mov.l   r0, @(V_SEL, r14)
         mov.l   r0, @(V_TOP, r14)
         mov.l   r0, @(V_PEND, r14)
+        mov.l   r0, @(V_POLL, r14)
         .ifdef  MENUSCRIPT
         mov.l   r0, @(V_SCR, r14)
         .endif
@@ -256,6 +260,30 @@ loop:
         mov.l   p_vbl_wait, r0
         jsr     @r0
         nop
+        mov.l   @(V_DISC, r14), r0      ! no disc: poll the drive about
+        cmp/eq  #2, r0                  ! twice a second, start over when
+        bf      30f                     ! a disc is in and spun up
+        mov.l   @(V_POLL, r14), r0
+        add     #1, r0
+        mov.l   r0, @(V_POLL, r14)
+        mov     #30, r1
+        cmp/hs  r1, r0
+        bf      30f
+        mov     #0, r0
+        mov.l   r0, @(V_POLL, r14)
+        mov.l   p_cd_status_m, r0
+        jsr     @r0
+        nop
+        cmp/eq  #1, r0                  ! PAUSE, STANDBY or PLAY
+        bt      31f
+        cmp/eq  #2, r0
+        bt      31f
+        cmp/eq  #3, r0
+        bf      30f
+31:     mov.l   p_start, r0
+        jmp     @r0
+        nop
+30:
         .ifdef  MENUSCRIPT              ! (test builds: scripted buttons)
         bsr     script_pad
         nop
@@ -375,11 +403,21 @@ loop:
         nop
 16:     mov.w   c_pad_start, r1         ! Start: leave
         tst     r1, r13
-        bt      loop
+        bf      19f
+        bra     loop
+        nop
+19:
         mov.l   @(V_DISC, r14), r0
-        tst     r0, r0
+        cmp/eq  #2, r0
+        bf      18f
+        mov.l   p_s_nodisc, r4          ! no disc: say so, keep polling
+        bsr     message
+        nop
+        bra     loop
+        nop
+18:     tst     r0, r0
         bf      17f
-        mov.l   p_start, r0             ! no disc: start over
+        mov.l   p_start, r0             ! disc failed: start over
         jmp     @r0
         nop
 17:     mov.l   @r15+, r8               ! disc ready: back to the boot
@@ -425,7 +463,9 @@ script_pad:
         mov     #0, r0
 
         .align  2
-        .if     MENUSCRIPT == 2         ! cartridge: delete the first save
+        .if     MENUSCRIPT == 3         ! Start (leave)
+script:         .word   30, 0, 2, PAD_START, 30, 0, 0, 0
+        .elseif MENUSCRIPT == 2         ! cartridge: delete the first save
 script:         .word   30, 0, 2, PAD_R, 20, 0, 2, PAD_A, 10, 0
                 .word   2, PAD_A, 30, 0, 0, 0
         .else                           ! copy the first save to the
@@ -462,6 +502,8 @@ c_m_allbits:    .long   0x0000FFFF
 p_bup_init:     .long   bup_init
 p_vdp2_init_m:  .long   vdp2_init
 p_vbl_wait:     .long   vbl_wait
+p_cd_status_m:  .long   cd_status
+p_s_nodisc:     .long   s_nodisc
 p_con_puthex_m: .long   con_puthex
 c_m_padraw:     .long   M_PADRAW
 p_start:        .long   _start
@@ -878,6 +920,7 @@ s_q_delete:     .asciz  "DELETE THIS SAVE?  A YES  B NO"
 s_q_copy:       .asciz  "COPY TO THE OTHER DEVICE?  A YES  B NO"
         .align  2
 s_q_format:     .asciz  "FORMAT, ERASING ALL SAVES?  A YES  B NO"
+s_nodisc:       .asciz  "NO DISC. INSERT ONE AND IT WILL BOOT"
         .align  2
 s_deleted:      .asciz  "DELETED"
         .align  2

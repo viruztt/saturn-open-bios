@@ -30,6 +30,7 @@ _start:
         ! Mask all interrupts (SR.I3-0 = 0xF)
         mov.l   sr_init, r0
         ldc     r0, sr
+        mov.l   sp_init, r15            ! also when the BIOS starts over
 
         ! Both SH-2s start here. The slave (BCR1 bit 15 = MASTER pin set) is
         ! only started by a game, via SMPC SSHON: send it to slave_start
@@ -165,9 +166,9 @@ readouts_done:
         bt      25f
         cmp/eq  #7, r0
         bf      24f
-25:     mov.l   p_menu, r0
-        jsr     @r0
-        mov     #0, r4
+25:     mov.l   p_menu, r0              ! no disc: manager, which boots
+        jsr     @r0                     ! once one is inserted
+        mov     #2, r4
 24:     mov.l   p_raw0, r8              ! FAD 150 if IP.BIN was the problem,
         mov.l   p_hdr, r1               ! else the last sector read
         mov.l   @r1, r0
@@ -312,6 +313,7 @@ unhandled:
 
         .align  2
 sr_init:        .long   0x000000F0
+sp_init:        .long   STACK_TOP
 reg_bcr1:       .long   0xFFFFFFE0      ! bus control register 1
 p_slave_start:  .long   slave_start
 reg_ccr:        .long   0xFFFFFE92      ! SH-2 cache control register
