@@ -261,15 +261,24 @@ readouts_done:
         bra     idle
         nop
         .endif
-        mov.l   p_pad_read, r0          ! Start held: backup RAM manager first
-        jsr     @r0
+        mov     #15, r0                 ! Start held: backup RAM manager
+        mov.l   r0, @-r15               ! first. Sampled over 15 reads (a
+28:     mov.l   p_pad_read, r0          ! quarter of a second), so a read
+        jsr     @r0                     ! the SMPC misses does not matter
         nop
         mov.w   c_pad_start_b, r1
         .ifdef  MENUTEST                ! (test builds: always open it)
         mov     r1, r0
         .endif
         tst     r1, r0
-        bt      27f
+        bf      29f
+        mov.l   @r15, r0
+        dt      r0
+        bf/s    28b
+        mov.l   r0, @r15
+        bra     27f                     ! not pressed: boot the game
+        add     #4, r15
+29:     add     #4, r15
         mov.l   p_menu, r0
         jsr     @r0
         mov     #1, r4
