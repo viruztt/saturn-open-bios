@@ -274,24 +274,24 @@ c_map:          .long   VDP2_VRAM + MAP_OFS
 c_nregs:        .word   0x120 / 2
 c_cram_longs:   .word   0x1000 / 4
 c_grad:         .long   VDP2_VRAM + GRAD_OFS
-c_backcol:      .word   0x8000 | (2 << 10) | (0 << 5) | 8    ! dark red
+c_backcol:      .word   0x8000 | (2 << 10) | (0 << 5) | 12   ! dark red
 c_end:          .word   0xFFFF
 c_charmask:     .word   0x0FFF
 
         .align  2
 inks:           .word   0xFFFF          ! 0 white
-                .word   0xADBF          ! 1 accent (coral red)
+                .word   0xCEBF          ! 1 accent (salmon)
                 .word   0xA37F          ! 2 yellow
-                .word   0xCA56          ! 3 warm grey
+                .word   0xDADA          ! 3 warm grey
                 .word   0xB38A          ! 4 green
                 .word   0xA99F          ! 5 red
-                .word   0x906D          ! 6 dim (dark red)
+                .word   0x98B4          ! 6 dim (muted red)
                 .word   0xFFFF          ! 7 (white)
                 .word   0xEFBF, 0xDF3E, 0xCE9C, 0xC21A  ! 8-14 title fade,
                 .word   0xB199, 0xA0F8, 0x9076          ! near white to red
         .align  2
-grad:           .word   0x8405, 0x8406, 0x8406, 0x8407, 0x8807, 0x8808, 0x8808, 0x8809
-                .word   0x8809, 0x880A, 0x880A, 0x880B, 0x8C0B, 0x8C0C, 0x8C0C, 0x8C0D
+grad:           .word   0x840A, 0x840A, 0x840B, 0x840B, 0x880C, 0x880C, 0x880C, 0x880D
+                .word   0x880D, 0x880E, 0x880E, 0x880E, 0x8C0F, 0x8C0F, 0x8C10, 0x8C10
 
         .align  2
 vdp2_tab:
