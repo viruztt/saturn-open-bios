@@ -3,6 +3,11 @@
 A free, clean-room replacement boot ROM (BIOS) for the Sega Saturn, for
 emulators and the MiSTer FPGA Saturn core. GPL-2.0-or-later.
 
+> This project is not affiliated with, endorsed by or connected to Sega. Sega
+> and Sega Saturn are trademarks of Sega Corporation, used here only to
+> describe the hardware this BIOS is compatible with. No Sega code, data or
+> game content is included or distributed.
+
 ![Boot screen](docs/screenshots/boot.png)
 
 ## The story
@@ -166,6 +171,11 @@ hardware state it leaves behind. The disc's security code is never run.
 Their code was read to understand what the hardware and games expect; this
 BIOS is written from scratch, and like Yabause and Kronos it is GPL.
 
-## Licence
+## Licence and trademarks
 
 GPL-2.0-or-later (see `COPYING`).
+
+This project is not affiliated with, endorsed by or connected to Sega. Sega
+and Sega Saturn are trademarks of Sega Corporation, used here only to
+describe the hardware this BIOS is compatible with. No Sega code, data or
+game content is included or distributed.
