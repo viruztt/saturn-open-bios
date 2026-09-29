@@ -29,6 +29,7 @@
         .equ    PAD_C,      0x0200
         .equ    PAD_B,      0x0100
         .equ    PAD_R,      0x0080
+        .equ    PAD_X,      0x0040
         .equ    PAD_Y,      0x0020
         .equ    PAD_L,      0x0008
 
@@ -405,7 +406,24 @@ loop:
         nop
         bra     loop
         nop
-16:     mov.w   c_pad_start, r1         ! Start: leave
+16:     mov     #PAD_X, r1              ! X: system settings page, then
+        tst     r1, r13                 ! back to a freshly drawn manager
+        bt      23f
+        mov.l   p_settings, r0
+        jsr     @r0
+        nop
+        mov.l   c_m_allbits, r0
+        mov.l   r0, @(V_PREV, r14)
+        mov.l   p_vdp2_init_m, r0
+        jsr     @r0
+        nop
+        bsr     draw_static
+        nop
+        bsr     refresh
+        nop
+        bra     loop
+        nop
+23:     mov.w   c_pad_start, r1         ! Start: leave
         tst     r1, r13
         bf      19f
         bra     loop
@@ -438,13 +456,16 @@ loop:
         .ifdef  MENUSCRIPT
 ! script_pad: r0 = buttons from the script (frames, buttons) pairs, ending
 ! with 0 frames (then nothing is pressed any more).
+! Also used by the settings page (it keeps its own r14).
         .align  2
+        .global script_pad
 script_pad:
+        mov.l   r14, @-r15
+        mov.l   p_script_v, r14
         mov.l   @(V_SCR, r14), r1
         tst     r1, r1
         bf      1f
-        mova    script, r0
-        mov     r0, r1
+        mov.l   p_script, r1
         mov.l   r1, @(V_SCR, r14)
         mov.w   @r1, r0
         mov.l   r0, @(V_SCRN, r14)
@@ -461,23 +482,16 @@ script_pad:
         mov.l   r0, @(V_SCRN, r14)
         add     #-4, r1
 2:      mov.w   @(2, r1), r0
-        rts
         extu.w  r0, r0
-9:      rts
-        mov     #0, r0
-
+        rts
+        mov.l   @r15+, r14
+9:      mov     #0, r0
+        rts
+        mov.l   @r15+, r14
         .align  2
-        .if     MENUSCRIPT == 4         ! L (look for a cartridge)
-script:         .word   30, 0, 2, PAD_L, 30, 0, 0, 0
-        .elseif MENUSCRIPT == 3         ! Start (leave)
-script:         .word   30, 0, 2, PAD_START, 30, 0, 0, 0
-        .elseif MENUSCRIPT == 2         ! cartridge: delete the first save
-script:         .word   30, 0, 2, PAD_R, 20, 0, 2, PAD_A, 10, 0
-                .word   2, PAD_A, 30, 0, 0, 0
-        .else                           ! copy the first save to the
-script:         .word   30, 0, 2, PAD_C, 10, 0, 2, PAD_A, 60, 0
-                .word   2, PAD_R, 30, 0, 0, 0 ! cartridge, then show it
-        .endif
+p_script:       .long   script
+p_script_v:     .long   M_V
+
         .endif
 
 ! scan_devs: (re)initialise the backup RAM library; V_CART = 1 if it found
@@ -534,6 +548,7 @@ p_s_nocart:     .long   s_nocart
 p_con_puthex_m: .long   con_puthex
 c_m_padraw:     .long   M_PADRAW
 p_start:        .long   _start
+p_settings:     .long   settings_main
 p_q_delete:     .long   s_q_delete
 p_q_copy:       .long   s_q_copy
 p_q_format:     .long   s_q_format
@@ -918,7 +933,7 @@ s_title:        .asciz  "BACKUP RAM MANAGER"
         .align  2
 s_help1:        .asciz  "UP/DOWN SELECT  L/R DEVICE  A DELETE"
         .align  2
-s_help2:        .asciz  "C COPY  Y FORMAT  START EXIT"
+s_help2:        .asciz  "C COPY  Y FORMAT  X SETUP  START EXIT"
         .align  2
 s_internal:     .asciz  "INTERNAL"
         .align  2
@@ -967,3 +982,22 @@ s_unformatted:  .asciz  "OTHER DEVICE NOT FORMATTED"
 s_failed:       .asciz  "FAILED, CODE"
         .align  2
 s_blank:        .asciz  "                                        "
+
+        .ifdef  MENUSCRIPT              ! test scripts: (frames, buttons) pairs
+        .align  2
+        .if     MENUSCRIPT == 5         ! settings: two languages on, back,
+script:         .word   30, 0, 2, PAD_X, 60, 0, 2, PAD_RIGHT, 40, 0 ! reopen
+                .word   2, PAD_RIGHT, 40, 0, 2, PAD_B, 40, 0, 2, PAD_X, 60, 0
+                .word   0, 0
+        .elseif MENUSCRIPT == 4         ! L (look for a cartridge)
+script:         .word   30, 0, 2, PAD_L, 30, 0, 0, 0
+        .elseif MENUSCRIPT == 3         ! Start (leave)
+script:         .word   30, 0, 2, PAD_START, 30, 0, 0, 0
+        .elseif MENUSCRIPT == 2         ! cartridge: delete the first save
+script:         .word   30, 0, 2, PAD_R, 20, 0, 2, PAD_A, 10, 0
+                .word   2, PAD_A, 30, 0, 0, 0
+        .else                           ! copy the first save to the
+script:         .word   30, 0, 2, PAD_C, 10, 0, 2, PAD_A, 60, 0
+                .word   2, PAD_R, 30, 0, 0, 0 ! cartridge, then show it
+        .endif
+        .endif

@@ -334,6 +334,12 @@ Fixes found this way:
   (or "Save Backup RAM" in the OSD); confirmed across a power cycle
   2026-09-29. The manager (Start at boot, or no disc) works on MiSTer since
   the pad fixes of 2026-09-29 (INTBACK after VBlank-out, status compare).
+- System settings (X in the manager): language in SMEM byte 3 low nibble
+  (0 English .. 5 Japanese, as the emulators read it), written with
+  SETSMEM; the SMPC clock is shown, not set (MiSTer and the emulators take
+  it from the host). Stereo/mono is not offered: its SMEM bit is not
+  publicly documented. The MiSTer core keeps SMEM only until the core is
+  reloaded.
 - SetScuInterruptMask writes the SCU mask from the slave CPU too (Yabause
   only does it on the master).
 - The first read file is loaded whole; sizes above the CD buffer (200
