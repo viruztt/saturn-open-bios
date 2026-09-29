@@ -42,6 +42,7 @@
         .equ    M_STAT,     0x20206020      ! BupStat
         .equ    M_NUM,      0x20206040      ! number text buffer
         .equ    M_V,        0x20206080      ! variables, see V_*
+        .equ    M_PADRAW,   0x202060C0      ! pad_read: last OREG0..3
         .equ    M_DIR,      0x20208000      ! BupDir[MAXDIR], 36 bytes each
         .equ    M_BUF,      0x20210000      ! copy buffer
         .equ    MAXDIR,     64
@@ -104,25 +105,39 @@
 
 ! ---- control pad ------------------------------------------------------------
 
-! pad_read: INTBACK with peripheral data only (IREG0 0, IREG1 PEN, 15-byte
-! port mode), then a break. Port 1 must report a directly connected
-! digital device (status 0xF1, ID 0x0x). Clobbers r1-r3.
+! pad_read: INTBACK with peripheral data only (IREG0 0, IREG1 PEN + OPE,
+! 15-byte port mode) issued right after VBlank-out, then a break. Port 1
+! must report a directly connected device (status 0xF1, ID 0x0x or 0x1x).
+! Takes up to one frame. Clobbers r1-r3.
         .align  2
 pad_read:
-        mov.l   c_sf, r1
+        mov.l   c_pr_tvstat, r1         ! issue it just after VBlank-out, as
+        mov.l   c_pad_wait, r2          ! the SMPC firmware drops or delays a
+5:      mov.w   @r1, r0                 ! request made at VBlank-in: wait
+        tst     #8, r0                  ! for a VBlank (or be in one) ...
+        bf      6f
+        dt      r2
+        bf      5b
+6:      mov.l   c_pad_wait, r2
+7:      mov.w   @r1, r0                 ! ... then for its end
+        tst     #8, r0
+        bt      9f
+        dt      r2
+        bf      7b
+9:      mov.l   c_sf, r1
         mov.l   c_pad_wait, r2
 1:      mov.b   @r1, r0                 ! SMPC idle?
         tst     #1, r0
         bt      2f
         dt      r2
         bf      1b
-        rts
-        mov     #0, r0
+        bra     10f                     ! (SMPC stayed busy)
+        mov     #1, r0
 2:      mov.l   c_ireg0, r3
         mov     #0, r0
         mov.b   r0, @r3                 ! IREG0: no status
-        mov     #0x08, r0
-        mov.b   r0, @(2, r3)            ! IREG1: peripheral data enable
+        mov     #0x0A, r0
+        mov.b   r0, @(2, r3)            ! IREG1: peripheral data, no wait
         mov     #0xF0, r0
         mov.b   r0, @(4, r3)            ! IREG2: 0xF0
         mov     #1, r0
@@ -136,16 +151,37 @@ pad_read:
         bt      4f
         dt      r2
         bf      3b
+        mov     #2, r0                  ! (no answer)
+10:     mov.l   c_pad_err, r2           ! raw = EEEEEE01/02 on a timeout
+        or      r0, r2
+        mov.l   c_pad_raw, r1
+        mov.l   r2, @r1
         bra     8f
-        mov     #0, r2                  ! (no answer)
-4:      mov.l   c_oreg0, r3
+        mov     #0, r2
+4:      mov.l   c_oreg0, r3             ! raw = OREG0..3 (shown by the menu)
+        mov.b   @r3, r0
+        extu.b  r0, r2
+        mov.b   @(2, r3), r0
+        extu.b  r0, r0
+        shll8   r2
+        or      r0, r2
+        mov.b   @(4, r3), r0
+        extu.b  r0, r0
+        shll8   r2
+        or      r0, r2
+        mov.b   @(6, r3), r0
+        extu.b  r0, r0
+        shll8   r2
+        or      r0, r2
+        mov.l   c_pad_raw, r1
+        mov.l   r2, @r1
         mov.b   @r3, r0                 ! port 1 status
         extu.b  r0, r0
         mov     #0, r2
         cmp/eq  #0xF1, r0
         bf      8f
-        mov.b   @(2, r3), r0            ! peripheral ID: digital device?
-        and     #0xF0, r0
+        mov.b   @(2, r3), r0            ! peripheral ID: pad, 3D pad, wheel
+        and     #0xE0, r0               ! or stick (0x0x/0x1x), buttons first
         tst     r0, r0
         bf      8f
         mov.b   @(4, r3), r0            ! buttons (active low)
@@ -168,6 +204,9 @@ c_ireg0:        .long   SMPC_IREG0
 c_comreg:       .long   SMPC_COMREG
 c_oreg0:        .long   SMPC_OREG0
 c_pad_wait:     .long   0x00100000
+c_pr_tvstat:    .long   0x25F80004
+c_pad_err:      .long   0xEEEEEE00
+c_pad_raw:      .long   M_PADRAW
 
 ! ---- the manager -------------------------------------------------------------
 
@@ -223,6 +262,14 @@ loop:
         .else
         bsr     pad_read
         nop
+        mov.l   r0, @-r15               ! raw SMPC reply, top right
+        mov.l   c_m_padraw, r4
+        mov.l   @r4, r4
+        mov     #30, r5
+        mov.l   p_con_puthex_m, r0
+        jsr     @r0
+        mov     #0, r6
+        mov.l   @r15+, r0
         .endif
         mov.l   @(V_PREV, r14), r1
         mov.l   r0, @(V_PREV, r14)
@@ -415,6 +462,8 @@ c_m_allbits:    .long   0x0000FFFF
 p_bup_init:     .long   bup_init
 p_vdp2_init_m:  .long   vdp2_init
 p_vbl_wait:     .long   vbl_wait
+p_con_puthex_m: .long   con_puthex
+c_m_padraw:     .long   M_PADRAW
 p_start:        .long   _start
 p_q_delete:     .long   s_q_delete
 p_q_copy:       .long   s_q_copy
