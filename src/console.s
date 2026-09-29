@@ -22,8 +22,8 @@
         .equ    GRAD_OFS,   0x7FC00         ! back colour per line (256 words)
 
 ! Palettes: pattern name bits 15-12 pick one, index 1 is the ink.
-!   0 white, 1 accent (light blue), 2 yellow, 3 grey, 4 green, 5 red, 6 dim,
-!   8-14 a fade from near white to deep blue (the boot title)
+!   0 white, 1 accent (coral red), 2 yellow, 3 grey, 4 green, 5 red, 6 dim,
+!   8-14 a fade from near white to red (the boot title)
 ! Drawing cells after the ASCII set (see tools/mkfont.py):
 !   0x60 full block, 0x61 horizontal rule, 0x62 block with a 1-pixel gap
 
@@ -274,24 +274,24 @@ c_map:          .long   VDP2_VRAM + MAP_OFS
 c_nregs:        .word   0x120 / 2
 c_cram_longs:   .word   0x1000 / 4
 c_grad:         .long   VDP2_VRAM + GRAD_OFS
-c_backcol:      .word   0x8000 | (14 << 10) | (4 << 5) | 2   ! dark blue
+c_backcol:      .word   0x8000 | (2 << 10) | (0 << 5) | 8    ! dark red
 c_end:          .word   0xFFFF
 c_charmask:     .word   0x0FFF
 
         .align  2
 inks:           .word   0xFFFF          ! 0 white
-                .word   0xFF4C          ! 1 accent
+                .word   0xADBF          ! 1 accent (coral red)
                 .word   0xA37F          ! 2 yellow
-                .word   0xD651          ! 3 grey
+                .word   0xCA56          ! 3 warm grey
                 .word   0xB38A          ! 4 green
-                .word   0xA97F          ! 5 red
-                .word   0xB906          ! 6 dim
+                .word   0xA99F          ! 5 red
+                .word   0x906D          ! 6 dim (dark red)
                 .word   0xFFFF          ! 7 (white)
-                .word   0xFFFA, 0xFF96, 0xFF33, 0xFECF  ! 8-14 title fade,
-                .word   0xFE8B, 0xFE28, 0xFDC4          ! light to deep blue
+                .word   0xEFBF, 0xDF3E, 0xCE9C, 0xC21A  ! 8-14 title fade,
+                .word   0xB199, 0xA0F8, 0x9076          ! near white to red
         .align  2
-grad:           .word   0xA461, 0xA461, 0xA862, 0xA862, 0xAC62, 0xAC63, 0xAC63, 0xB063
-                .word   0xB064, 0xB464, 0xB464, 0xB465, 0xB865, 0xB865, 0xBC66, 0xBC66
+grad:           .word   0x8405, 0x8406, 0x8406, 0x8407, 0x8807, 0x8808, 0x8808, 0x8809
+                .word   0x8809, 0x880A, 0x880A, 0x880B, 0x8C0B, 0x8C0C, 0x8C0C, 0x8C0D
 
         .align  2
 vdp2_tab:
