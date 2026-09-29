@@ -347,6 +347,11 @@ Fixes found this way:
   Saturn Kai Lite (PSKAI256.BIN) reaches its main menu in Yabause (Action
   Replay cart type; Yabause's AR emulation does not start with the 1 MB
   full version).
+- Load CD system calls (0x29C init, 0x2CC read, 0x288 boot) run the
+  BIOS's own disc boot. Pseudo Saturn Kai's CWX loader (the one used for
+  cheat codes) is not supported and will not be: it runs the disc's
+  security code, which calls into fixed places of Sega's BIOS ROM. Its
+  JHL loader uses the load CD calls. Decided with the owner 2026-09-29.
 - SetScuInterruptMask writes the SCU mask from the slave CPU too (Yabause
   only does it on the master).
 - The first read file is loaded whole; sizes above the CD buffer (200
