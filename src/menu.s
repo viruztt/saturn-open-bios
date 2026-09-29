@@ -466,7 +466,9 @@ script_pad:
         mov     #0, r0
 
         .align  2
-        .if     MENUSCRIPT == 3         ! Start (leave)
+        .if     MENUSCRIPT == 4         ! L (look for a cartridge)
+script:         .word   30, 0, 2, PAD_L, 30, 0, 0, 0
+        .elseif MENUSCRIPT == 3         ! Start (leave)
 script:         .word   30, 0, 2, PAD_START, 30, 0, 0, 0
         .elseif MENUSCRIPT == 2         ! cartridge: delete the first save
 script:         .word   30, 0, 2, PAD_R, 20, 0, 2, PAD_A, 10, 0
