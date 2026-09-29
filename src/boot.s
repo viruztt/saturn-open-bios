@@ -80,6 +80,7 @@ c_master_bit:   .word   0x8000
         mov     r0, r8
         mov     #2, r9
         mov     #0, r10
+        mov     #0, r14
 step:
         mov.l   @r8+, r4
         tst     r4, r4
@@ -92,6 +93,12 @@ step:
         mov.l   @r8+, r0
         jsr     @r0
         nop
+        mov     r0, r11                 ! pad after every step: r14 collects
+        mov.l   p_pad_read, r0          ! the buttons seen during the boot
+        jsr     @r0                     ! (Start anywhere opens the backup
+        nop                             ! RAM manager before the game)
+        or      r0, r14                 ! (no stack: Work RAM is not
+        mov     r11, r0                 ! cleared yet after the first step)
         tst     r0, r0
         bf      1f
         mova    msg_ok, r0
@@ -261,6 +268,9 @@ readouts_done:
         bra     idle
         nop
         .endif
+        mov.w   c_pad_start_b, r1       ! Start seen during the boot?
+        tst     r1, r14
+        bf      30f
         mov     #15, r0                 ! Start held: backup RAM manager
         mov.l   r0, @-r15               ! first. Sampled over 15 reads (a
 28:     mov.l   p_pad_read, r0          ! quarter of a second), so a read
@@ -279,7 +289,7 @@ readouts_done:
         bra     27f                     ! not pressed: boot the game
         add     #4, r15
 29:     add     #4, r15
-        mov.l   p_menu, r0
+30:     mov.l   p_menu, r0
         jsr     @r0
         mov     #1, r4
 27:
