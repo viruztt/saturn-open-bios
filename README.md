@@ -61,9 +61,25 @@ On MiSTer, use CHD images, or cue sheets without a `PREGAP` line: with an
 unstored pregap the MiSTer's drive emulation plays the wrong audio (the end
 of the data track) instead of the CD music. This is not a BIOS issue.
 
-Not supported: the audio CD player, Video CD / Photo CD (they need the MPEG
-card), and Pseudo Saturn Kai's cheat loader (it runs the disc's security
-code, which calls into Sega's BIOS).
+Not supported: the audio CD player, and Video CD / Photo CD (they need the
+MPEG card).
+
+### Pseudo Saturn Kai
+
+Pseudo Saturn Kai (PSKAI) boots as a cartridge: on MiSTer set the OSD
+**Cartridge** option to **ROM 2M** and load the cartridge file with "Load
+cartridge". Use the Lite version (`PSKAI256.BIN`, from
+`lite/pskai_flasher_lite.iso` in the PSKAI release): the full version looks
+for an SD card adapter that MiSTer does not have (X+Y+Z skips that check).
+
+- Its menu, and starting a game with its default "JHL" loader, go through
+  this BIOS's documented "load CD" system calls.
+- **Cheat codes do not work.** With cheats enabled PSKAI uses its "CWX"
+  loader, which starts the game the way Sega's BIOS does: it runs the
+  disc's security code, and that code calls into fixed places inside
+  Sega's BIOS ROM. Supporting it would mean imitating undocumented Sega
+  BIOS internals behind the copy protection, which this project does not
+  do. For cheats, use PSKAI with the original BIOS.
 
 ## Using it on MiSTer
 
