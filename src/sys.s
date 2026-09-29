@@ -372,31 +372,33 @@ scu_dispatch:
         mov.l   @r15+, r0
         lds.l   @r15+, pr
         .endif
-        mov.l   r2, @-r15
-        mov.l   r3, @-r15
-        mov.l   r4, @-r15
-        mov.l   r5, @-r15
-        mov.l   r6, @-r15
-        mov.l   r7, @-r15
-        sts.l   pr, @-r15               ! (GBR is not saved: handlers keep it)
-        sts.l   mach, @-r15
-        sts.l   macl, @-r15
+        ! Saves interleaved with the table lookups, so no load is used by
+        ! the next instruction (no pipeline stalls on the way in).
         mov.l   c_mask_shadow, r1
-        mov.l   @r1, r2
-        mov.l   r2, @-r15               ! old mask
+        mov.l   r2, @-r15
+        mov.l   @r1, r2                 ! r2 = old mask
+        mov.l   r3, @-r15
         add     #-0x40, r0
+        mov.l   r4, @-r15
         shll2   r0                      ! r0 = (vector - 0x40) * 4
+        mov.l   r5, @-r15
         mov.l   c_prio_tab_c, r3
-        mov.l   @(r0, r3), r3
+        mov.l   r6, @-r15
+        mov.l   c_user_tab_c, r5
+        mov.l   r7, @-r15
+        mov.l   @(r0, r3), r3           ! priority entry
+        sts.l   pr, @-r15               ! (GBR is not saved: handlers keep it)
+        mov.l   @(r0, r5), r5           ! user handler
+        sts.l   mach, @-r15
         mov     r3, r4
+        sts.l   macl, @-r15
         shlr16  r4                      ! SR while the handler runs
+        mov.l   r2, @-r15               ! old mask
         exts.w  r3, r3                  ! SCU mask bits (bit 15 extends)
         or      r3, r2
         mov.l   r2, @r1
         mov.l   c_scu_ims, r1
         mov.l   r2, @r1
-        mov.l   c_user_tab_c, r5
-        mov.l   @(r0, r5), r5
         ldc     r4, sr
         jsr     @r5
         nop
