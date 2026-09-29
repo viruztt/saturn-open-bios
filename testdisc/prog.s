@@ -204,6 +204,7 @@ tests:
         .long   n_cart,   t_bupcart
         .long   n_ram,    t_ramcart
         .long   n_loadcd, t_loadcd
+        .long   n_rom6480, t_rom6480
         .long   0
 
         .align  2
@@ -244,6 +245,8 @@ n_cart:         .asciz  "BUP CARTRIDGE"
 n_ram:          .asciz  "RAM CART ID"
         .align  2
 n_loadcd:       .asciz  "LOAD CD INIT/READ/BOOT"
+        .align  2
+n_rom6480:      .asciz  "BOOT VIA ROM 6480"
 
         .align  2
 ! ---- tests: return r0 = 0 on pass --------------------------------------
@@ -1066,7 +1069,29 @@ t_loadcd:
         rts
         nop
 
+! t_rom6480: the same through the fixed ROM entry at 0x6480 that Pseudo
+! Saturn Kai's cheat loader calls (with a stack outside Work RAM).
         .align  2
+t_rom6480:
+        sts.l   pr, @-r15
+        mov.l   c_lc_flag2, r1
+        mov.l   @r1, r0
+        mov.l   c_lc_magic, r2
+        cmp/eq  r2, r0
+        bf      1f
+        mov     #0, r0                  ! second run: it worked
+        mov.l   r0, @r1
+        lds.l   @r15+, pr
+        rts
+        nop
+1:      mov.l   r2, @r1                 ! first run: boot again
+        mov.l   c_lc_6480, r0
+        jmp     @r0                     ! does not come back
+        nop
+
+        .align  2
+c_lc_flag2:     .long   0x202FFFF4
+c_lc_6480:      .long   0x00006480
 c_lc_flag:      .long   0x202FFFF0      ! Low Work RAM, cache-through
 c_lc_magic:     .long   0x4C434254      ! "LCBT"
 c_lc_init:      .long   0x0600029C

@@ -73,3 +73,26 @@ p_lc_read_ip:   .long   cd_read_ip
 p_lc_ip_load:   .long   ip_load
 p_lc_first_read: .long  first_read
 p_lc_boot_game: .long   boot_game
+
+! Fixed ROM entry at 0x00006480. The cheat loader of Pseudo Saturn Kai
+! calls this ROM address directly (jsr to a constant 0x6480) once it has
+! taken a disc's IP.BIN, with the stack pointer left outside Work RAM. Here
+! it gets a sane stack, interrupts masked, and the BIOS's own disc boot
+! (as the load CD boot call); if that fails, the BIOS starts over.
+        .section .fixed6480, "ax"
+        .align  2
+rom_6480:
+        mov.l   c_f_sr, r0
+        ldc     r0, sr
+        mov.l   c_f_stack, r15
+        mov.l   p_f_boot, r0
+        jsr     @r0                     ! returns only on failure
+        nop
+        mov.l   p_f_start, r0
+        jmp     @r0
+        nop
+        .align  2
+c_f_sr:         .long   0x000000F0
+c_f_stack:      .long   0x06002000
+p_f_boot:       .long   sc_loadcd_boot
+p_f_start:      .long   _start
