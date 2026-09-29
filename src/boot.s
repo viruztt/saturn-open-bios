@@ -65,29 +65,27 @@ c_master_bit:   .word   0x8000
         nop
         .endif
 
-        mova    msg_title, r0
-        mov     r0, r4
-        mov     #2, r5
-        mov     #0, r6
-        mov.l   p_con_puts, r0
+        mov.l   p_ui_splash, r0         ! boot screen (no stack)
         jsr     @r0
         nop
 
-        ! Run the init steps: print the name, call it, print OK or FAIL.
-        ! Later steps depend on earlier ones, so stop at the first failure.
-        ! r8 = step table, r9 = screen row, r10 = nonzero once a step failed
+        ! Run the init steps, showing progress on the boot screen. Later
+        ! steps depend on earlier ones, so stop at the first failure; the
+        ! step list is then drawn in full (OK / FAIL) with the readouts.
+        ! r8 = step table, r9 = row the step would take in that list (2 +
+        ! steps done), r10 = nonzero once a step failed
         mova    steps, r0
         mov     r0, r8
         mov     #2, r9
         mov     #0, r10
         mov     #0, r14
 step:
-        mov.l   @r8+, r4
-        tst     r4, r4
+        mov.l   @r8+, r5
+        tst     r5, r5
         bt      steps_done
-        mov     #2, r5
-        mov     r9, r6
-        mov.l   p_con_puts, r0
+        mov     r9, r4                  ! steps done, the name of this one
+        add     #-2, r4
+        mov.l   p_ui_step, r0
         jsr     @r0
         nop
         mov.l   @r8+, r0
@@ -100,28 +98,23 @@ step:
         or      r0, r14                 ! (no stack: Work RAM is not
         mov     r11, r0                 ! cleared yet after the first step)
         tst     r0, r0
-        bf      1f
-        mova    msg_ok, r0
-        bra     2f
-        nop
-1:      mov     #1, r10
-        mova    msg_fail, r0
-2:      mov     r0, r4
-        mov     #24, r5
-        mov     r9, r6
-        mov.l   p_con_puts, r0
-        jsr     @r0
-        nop
-        tst     r10, r10
-        bf/s    steps_done
+        bt      1f
+        bra     steps_done
+        mov     #1, r10
+1:      bra     step
         add     #1, r9
-        bra     step
-        nop
 
 steps_done:
         mov.l   p_bup_auto, r0          ! blank internal backup RAM: format it
         jsr     @r0
         nop
+        tst     r10, r10                ! all passed: straight on (boot screen)
+        bf      1f
+        bra     20f
+        nop
+1:      bsr     fail_list               ! failed: the full step list
+        nop
+        add     #1, r9                  ! (row after the failed step)
         mov     r9, r13                 ! blank row between steps and readouts
         ! Read back a few live values: (label, address, 0 = word / 1 = long /
         ! 2 = NUL-terminated string)
@@ -256,12 +249,11 @@ readouts_done:
         jsr     @r0
         mov     #0, r4
 20:
-        add     #1, r9
+        mov     r9, r4                  ! full bar, "starting"
+        add     #-2, r4
         mova    msg_boot, r0
-        mov     r0, r4
-        mov     #2, r5
-        mov     r9, r6
-        mov.l   p_con_puts, r0
+        mov     r0, r5
+        mov.l   p_ui_step, r0
         jsr     @r0
         nop
         .ifdef  NOBOOT                  ! debug builds: stop before the hand-over
@@ -295,11 +287,16 @@ readouts_done:
 27:
         mov.l   94f, r1                 ! TVMD: display on, no border colour
         mov.w   95f, r0                 ! mode (our console set it)
+        mov.w   r0, @r1
+        mov.l   98f, r1                 ! back screen: one colour again (the
+        mov.w   97f, r0                 ! boot screen used one per line)
         bra     96f
         mov.w   r0, @r1
         .align  2
 94:     .long   0x25F80000
+98:     .long   0x25F800AC              ! BKTAU
 95:     .word   0x8000
+97:     .word   0x0003                  ! single colour at 0x7FFFE
         .align  2
 96:
         .ifdef  VDP2CLR                 ! (test builds: VDP2 registers all 0,
@@ -354,6 +351,8 @@ p_freeblk:      .long   CD_FREEBLK
 p_hdr:          .long   CD_HDR
 p_cd_err:       .long   CD_ERR
 p_menu:         .long   menu_main
+p_ui_splash:    .long   ui_splash
+p_ui_step:      .long   ui_step
 p_bup_auto:     .long   bup_autoformat
 p_pad_read:     .long   pad_read
 p_vbl_wait_b:   .long   vbl_wait
@@ -362,6 +361,72 @@ c_pad_start_b:  .word   0x0800
 p_toc:          .long   CD_TOC
 p_leadout:      .long   CD_TOC + 101 * 4
 c_sega:         .long   0x53454741      ! "SEGA"
+
+! fail_list: after a failed step, the classic screen: title, then every
+! step so far with OK, the failed one (row r9) with FAIL. Uses r11, r12.
+        .align  2
+fail_list:
+        sts.l   pr, @-r15
+        mov.l   p_fl_vdp2, r0
+        jsr     @r0
+        nop
+        mov.l   p_fl_title, r4
+        mov     #2, r5
+        mov.l   p_fl_puts, r0
+        jsr     @r0
+        mov     #0, r6
+        mov     #1, r4                  ! title in the accent colour
+        mov     #2, r5
+        mov     #0, r6
+        mov.l   p_fl_color, r0
+        jsr     @r0
+        mov     #16, r7
+        mov.l   p_fl_steps, r12
+        mov     #2, r11
+1:      mov.l   @r12+, r4
+        add     #4, r12
+        mov     #2, r5
+        mov.l   p_fl_puts, r0
+        jsr     @r0
+        mov     r11, r6
+        cmp/eq  r9, r11
+        bt      2f
+        mov.l   p_fl_ok, r4             ! OK in green
+        mov     #24, r5
+        mov.l   p_fl_puts, r0
+        jsr     @r0
+        mov     r11, r6
+        mov     #4, r4
+        mov     #24, r5
+        mov     r11, r6
+        mov.l   p_fl_color, r0
+        jsr     @r0
+        mov     #2, r7
+        bra     1b
+        add     #1, r11
+2:      mov.l   p_fl_fail, r4           ! FAIL in red
+        mov     #24, r5
+        mov.l   p_fl_puts, r0
+        jsr     @r0
+        mov     r11, r6
+        mov     #5, r4
+        mov     #24, r5
+        mov     r11, r6
+        mov.l   p_fl_color, r0
+        jsr     @r0
+        mov     #4, r7
+        lds.l   @r15+, pr
+        rts
+        nop
+
+        .align  2
+p_fl_title:     .long   msg_title
+p_fl_steps:     .long   steps
+p_fl_ok:        .long   msg_ok
+p_fl_fail:      .long   msg_fail
+p_fl_color:     .long   con_color
+p_fl_vdp2:      .long   vdp2_init
+p_fl_puts:      .long   con_puts
 
 ! Boot steps in order: (name, routine). wram_clear must come before any step
 ! that uses the stack, and vbr_init before sys_init.

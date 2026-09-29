@@ -33,8 +33,8 @@
         .equ    S_TXT,      40              ! clock text
 
         .equ    NLANG,      6
-        .equ    LANG_ROW,   3
-        .equ    CLOCK_ROW,  5
+        .equ    LANG_ROW,   4
+        .equ    CLOCK_ROW,  6
         .equ    VAL_COL,    12
 
 ! PUTS str, col, row
@@ -66,10 +66,12 @@ settings_main:
         mov.l   p_vdp2_init_s, r0       ! fresh screen
         jsr     @r0
         nop
-        PUTS    s_title, 1, 0
+        PUTS    s_title, 1, 1
         PUTS    s_lang, 1, LANG_ROW
         PUTS    s_clock, 1, CLOCK_ROW
-        PUTS    s_help, 1, 25
+        PUTS    s_help, 1, 24
+        bsr     style
+        nop
         bsr     vbl_end
         nop
         bsr     status_read
@@ -186,6 +188,57 @@ p_script_s:     .long   script_pad
 c_s_back:       .word   PAD_B | PAD_START
 c_s_left:       .word   PAD_LEFT
 c_s_right:      .word   PAD_RIGHT
+
+! style: colours and rules for the page (as the backup RAM manager's).
+        .align  2
+style:
+        sts.l   pr, @-r15
+        mov     #1, r4                  ! title: accent
+        mov     #1, r5
+        mov     #1, r6
+        bsr     s_paint
+        mov     #15, r7
+        mov     #3, r4                  ! labels and help: grey
+        mov     #1, r5
+        mov     #LANG_ROW, r6
+        bsr     s_paint
+        mov     #8, r7
+        mov     #3, r4
+        mov     #1, r5
+        mov     #CLOCK_ROW, r6
+        bsr     s_paint
+        mov     #8, r7
+        mov     #3, r4
+        mov     #1, r5
+        mov     #24, r6
+        bsr     s_paint
+        mov     #38, r7
+        mov     #2, r6                  ! rules
+        bsr     s_rule
+        nop
+        mov     #23, r6
+        bsr     s_rule
+        nop
+        lds.l   @r15+, pr
+        rts
+        nop
+
+s_paint:
+        mov.l   p_s_color, r0
+        jmp     @r0
+        nop
+
+s_rule:
+        mov.w   c_s_rule, r4
+        mov     #1, r5
+        mov.l   p_s_fill, r0
+        jmp     @r0
+        mov     #38, r7
+
+        .align  2
+p_s_color:      .long   con_color
+p_s_fill:       .long   con_fill
+c_s_rule:       .word   0x6061
 
 ! draw_lang: the language name at (VAL_COL, LANG_ROW).
         .align  2

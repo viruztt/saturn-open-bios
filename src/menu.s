@@ -64,10 +64,10 @@
         .equ    V_SCRN,     36              ! (MENUSCRIPT) frames left in it
         .equ    V_POLL,     40              ! frames since the last drive poll
 
-        .equ    DEV_ROW,    2
-        .equ    LIST_ROW,   4               ! first list row
-        .equ    LIST_ROWS,  18
-        .equ    MSG_ROW,    23
+        .equ    DEV_ROW,    3
+        .equ    LIST_ROW,   5               ! first list row
+        .equ    LIST_ROWS,  16
+        .equ    MSG_ROW,    22
 
         .equ    ACT_DELETE, 1
         .equ    ACT_COPY,   2
@@ -277,13 +277,7 @@ loop:
 30:
         bsr     pad_read
         nop
-        mov.l   r0, @-r15               ! raw SMPC reply, top right
-        mov.l   c_m_padraw, r4
-        mov.l   @r4, r4
-        mov     #30, r5
-        mov.l   p_con_puthex_m, r0
-        jsr     @r0
-        mov     #0, r6
+        mov.l   r0, @-r15
         .ifdef  MENUSCRIPT              ! (test builds: add scripted buttons)
         bsr     script_pad
         nop
@@ -545,8 +539,6 @@ p_vbl_wait:     .long   vbl_wait
 p_cd_status_m:  .long   cd_status
 p_s_nodisc:     .long   s_nodisc
 p_s_nocart:     .long   s_nocart
-p_con_puthex_m: .long   con_puthex
-c_m_padraw:     .long   M_PADRAW
 p_start:        .long   _start
 p_settings:     .long   settings_main
 p_q_delete:     .long   s_q_delete
@@ -674,12 +666,53 @@ p_s_failed:     .long   s_failed
         .align  2
 draw_static:
         sts.l   pr, @-r15
-        PUTS    s_title, 1, 0
-        PUTS    s_help1, 1, 25
-        PUTS    s_help2, 1, 26
+        PUTS    s_title, 1, 1
+        PUTS    s_help1, 1, 24
+        PUTS    s_help2, 1, 25
+        mov     #1, r4                  ! title in the accent colour
+        mov     #1, r5
+        mov     #1, r6
+        bsr     paint
+        mov     #20, r7
+        mov     #2, r6                  ! rules under the title, over the help
+        bsr     rule
+        nop
+        mov     #23, r6
+        bsr     rule
+        nop
+        mov     #3, r4                  ! help in grey
+        mov     #1, r5
+        mov     #24, r6
+        bsr     paint
+        mov     #39, r7
+        mov     #3, r4
+        mov     #1, r5
+        mov     #25, r6
+        bsr     paint
+        mov     #39, r7
         lds.l   @r15+, pr
         rts
         nop
+
+! paint: r4 = palette, r5 = column, r6 = row, r7 = cells (con_color).
+paint:
+        mov.l   p_con_color_m, r0
+        jmp     @r0
+        nop
+
+! rule: r6 = row: a dim horizontal rule across the screen (con_fill).
+rule:
+        mov.w   c_rule_m, r4
+        mov     #1, r5
+        mov.l   p_con_fill_m, r0
+        jmp     @r0
+        mov     #38, r7
+
+        .align  2
+p_con_color_m:  .long   con_color
+p_con_fill_m:   .long   con_fill
+c_rule_m:       .word   0x6061          ! rule cell, palette 6 (dim)
+        .align  2
 
 ! message: r4 = string for the message row, or 0 to clear it
         .align  2
@@ -696,6 +729,11 @@ message:
         mov.l   p_con_puts_m, r0
         jsr     @r0
         mov     #MSG_ROW, r6
+        mov     #2, r4                  ! messages in yellow
+        mov     #1, r5
+        mov     #MSG_ROW, r6
+        bsr     paint
+        mov     #39, r7
 1:      lds.l   @r15+, pr
         rts
         nop
@@ -869,6 +907,15 @@ draw_list:
         mov     #LIST_ROW, r6
         bsr     putdec
         add     r8, r6
+        mov.l   @(V_SEL, r14), r0       ! the selected save in yellow
+        cmp/eq  r0, r9
+        bf      3f
+        mov     #2, r4
+        mov     #0, r5
+        mov     #LIST_ROW, r6
+        add     r8, r6
+        bsr     paint
+        mov     #40, r7
 3:      add     #1, r8
         mov     #LIST_ROWS, r0
         cmp/hs  r0, r8

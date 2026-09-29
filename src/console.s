@@ -9,6 +9,9 @@
         .global vdp2_init
         .global con_puts
         .global con_puthex
+        .global con_fill
+        .global con_color
+        .global con_big
 
         .equ    VDP2_VRAM,  0x25E00000
         .equ    VDP2_CRAM,  0x25F00000
@@ -16,6 +19,13 @@
         .equ    MAP_OFS,    0x40000         ! bank B0, map register value 0x20
         .equ    FONT_OFS,   0x20 * 32       ! first glyph is ' ' (0x20)
         .equ    BACK_OFS,   0x7FFFE         ! last VRAM word holds the back colour
+        .equ    GRAD_OFS,   0x7FC00         ! back colour per line (256 words)
+
+! Palettes: pattern name bits 15-12 pick one, index 1 is the ink.
+!   0 white, 1 accent (light blue), 2 yellow, 3 grey, 4 green, 5 red, 6 dim,
+!   8-14 a fade from near white to deep blue (the boot title)
+! Drawing cells after the ASCII set (see tools/mkfont.py):
+!   0x60 full block, 0x61 horizontal rule, 0x62 block with a 1-pixel gap
 
 ! CELL_ADDR: r1 = map address of (r5 = column, r6 = row). Clobbers r5, r6.
         .macro  CELL_ADDR
@@ -67,12 +77,31 @@ vdp2_init:
         bf/s    3b
         add     #4, r3
 
-        ! Palette 0: index 1 = white ink (index 0 is transparent)
+        ! Palettes 0-6: index 1 = ink (index 0 is transparent)
+        mova    inks, r0
+        mov     r0, r2
         mov.l   c_cram, r1
-        mov.w   c_white, r0
-        mov.w   r0, @(2, r1)
+        add     #2, r1
+        mov     #15, r3
+7:      mov.w   @r2+, r0
+        mov.w   r0, @r1
+        dt      r3
+        bf/s    7b
+        add     #32, r1
 
-        ! Back screen colour
+        ! Back screen: a colour per line, 16 bands of 16 lines, plus the
+        ! single colour word (kept for code that sets it)
+        mova    grad, r0
+        mov     r0, r2
+        mov.l   c_grad, r1
+        mov     #16, r3
+8:      mov.w   @r2+, r0
+        .rept   16
+        mov.w   r0, @r1
+        add     #2, r1
+        .endr
+        dt      r3
+        bf      8b
         mov.l   c_back, r1
         mov.w   c_backcol, r0
         mov.w   r0, @r1
@@ -133,6 +162,105 @@ con_puthex:
         rts
         nop
 
+! con_fill: r4 = pattern name word (character | palette << 12), r5 =
+! column, r6 = row, r7 = count. Writes r7 cells. Leaf, clobbers r0-r7.
+        .align  2
+con_fill:
+        CELL_ADDR
+1:      mov.w   r4, @r1
+        dt      r7
+        bf/s    1b
+        add     #2, r1
+        rts
+        nop
+
+! con_color: r4 = palette (0-15), r5 = column, r6 = row, r7 = count.
+! Recolours r7 cells already written. Leaf, clobbers r0-r7.
+        .align  2
+con_color:
+        CELL_ADDR
+        shll8   r4
+        shll2   r4
+        shll2   r4                      ! palette << 12
+        mov.w   c_charmask, r2
+1:      mov.w   @r1, r0
+        and     r2, r0
+        or      r4, r0
+        mov.w   r0, @r1
+        dt      r7
+        bf/s    1b
+        add     #2, r1
+        rts
+        nop
+
+! con_big: r4 = string (A-Z, 0-9, space), r5 = column, r6 = row, r7 =
+! pattern name word for a lit pixel (0x62 | palette << 12). Draws each
+! character 8 times its size from the font: 5x7 cells, 6 columns apart.
+! Leaf (no stack), clobbers r0-r7.
+        .align  2
+con_big:
+1:      mov.b   @r4+, r0
+        extu.b  r0, r0
+        tst     r0, r0
+        bt      9f
+        add     #-0x20, r0              ! r1 = glyph row 1 (row 0 is empty)
+        shll2   r0
+        shll2   r0
+        shll    r0
+        mov.l   c_font, r1
+        add     r0, r1
+        add     #4, r1
+        mov     r6, r0                  ! r2 = map cell (r5, r6)
+        shll2   r0
+        shll2   r0
+        shll2   r0
+        shll    r0
+        mov.l   c_map, r2
+        add     r0, r2
+        mov     r5, r0
+        shll    r0
+        add     r0, r2
+        mov     #7, r3                  ! 7 rows of 5 pixels (columns 1-5)
+2:      mov.l   @r1+, r0
+        shll    r0                      ! column 1's bit (24) to bit 31
+        shll2   r0
+        shll2   r0
+        shll2   r0
+        cmp/pz  r0
+        bt      3f
+        mov.w   r7, @r2
+3:      add     #2, r2
+        shll2   r0
+        shll2   r0
+        cmp/pz  r0
+        bt      3f
+        mov.w   r7, @r2
+3:      add     #2, r2
+        shll2   r0
+        shll2   r0
+        cmp/pz  r0
+        bt      3f
+        mov.w   r7, @r2
+3:      add     #2, r2
+        shll2   r0
+        shll2   r0
+        cmp/pz  r0
+        bt      3f
+        mov.w   r7, @r2
+3:      add     #2, r2
+        shll2   r0
+        shll2   r0
+        cmp/pz  r0
+        bt      3f
+        mov.w   r7, @r2
+3:      add     #120, r2                ! next row (128 - 4 cells passed)
+        dt      r3
+        bf      2b
+        bra     1b
+        add     #6, r5
+9:      rts
+        nop
+
         .align  2
 c_regs:         .long   VDP2_REGS
 c_vram:         .long   VDP2_VRAM
@@ -145,9 +273,25 @@ c_back:         .long   VDP2_VRAM + BACK_OFS
 c_map:          .long   VDP2_VRAM + MAP_OFS
 c_nregs:        .word   0x120 / 2
 c_cram_longs:   .word   0x1000 / 4
-c_white:        .word   0x7FFF
+c_grad:         .long   VDP2_VRAM + GRAD_OFS
 c_backcol:      .word   0x8000 | (14 << 10) | (4 << 5) | 2   ! dark blue
 c_end:          .word   0xFFFF
+c_charmask:     .word   0x0FFF
+
+        .align  2
+inks:           .word   0xFFFF          ! 0 white
+                .word   0xFF4C          ! 1 accent
+                .word   0xA37F          ! 2 yellow
+                .word   0xD651          ! 3 grey
+                .word   0xB38A          ! 4 green
+                .word   0xA97F          ! 5 red
+                .word   0xB906          ! 6 dim
+                .word   0xFFFF          ! 7 (white)
+                .word   0xFFFA, 0xFF96, 0xFF33, 0xFECF  ! 8-14 title fade,
+                .word   0xFE8B, 0xFE28, 0xFDC4          ! light to deep blue
+        .align  2
+grad:           .word   0xA461, 0xA461, 0xA862, 0xA862, 0xAC62, 0xAC63, 0xAC63, 0xB063
+                .word   0xB064, 0xB464, 0xB464, 0xB465, 0xB865, 0xB865, 0xBC66, 0xBC66
 
         .align  2
 vdp2_tab:
@@ -167,8 +311,8 @@ vdp2_tab:
         .word   0x0042, 0x2020          ! MPCDN0: planes C,D at MAP_OFS
         .word   0x0078, 0x0001          ! ZMXIN0: 1.0 horizontal step
         .word   0x007C, 0x0001          ! ZMYIN0: 1.0 vertical step
-        .word   0x00AC, BACK_OFS >> 17  ! BKTAU
-        .word   0x00AE, (BACK_OFS >> 1) & 0xFFFF   ! BKTAL
+        .word   0x00AC, 0x8000 | (GRAD_OFS >> 17)  ! BKTAU: colour per line
+        .word   0x00AE, (GRAD_OFS >> 1) & 0xFFFF   ! BKTAL
         .word   0x00F8, 0x0007          ! PRINA: NBG0 priority 7
         .word   0x0000, 0x8100          ! TVMD: display on, 320x224 (last)
         .word   0xFFFF
