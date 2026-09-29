@@ -674,6 +674,9 @@ draw_static:
         mov     #1, r6
         bsr     paint
         mov     #20, r7
+        mov.l   p_ver_right, r0         ! version, top right
+        jsr     @r0
+        mov     #1, r6
         mov     #2, r6                  ! rules under the title, over the help
         bsr     rule
         nop
@@ -710,6 +713,7 @@ rule:
 
         .align  2
 p_con_color_m:  .long   con_color
+p_ver_right:    .long   ui_version_right
 p_con_fill_m:   .long   con_fill
 c_rule_m:       .word   0x6061          ! rule cell, palette 6 (dim)
         .align  2

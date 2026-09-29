@@ -198,6 +198,9 @@ style:
         mov     #1, r6
         bsr     s_paint
         mov     #15, r7
+        mov.l   p_s_ver, r0             ! version, top right
+        jsr     @r0
+        mov     #1, r6
         mov     #3, r4                  ! labels and help: grey
         mov     #1, r5
         mov     #LANG_ROW, r6
@@ -237,6 +240,7 @@ s_rule:
 
         .align  2
 p_s_color:      .long   con_color
+p_s_ver:        .long   ui_version_right
 p_s_fill:       .long   con_fill
 c_s_rule:       .word   0x6061
 

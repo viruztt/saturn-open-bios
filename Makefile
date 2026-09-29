@@ -13,7 +13,18 @@ all: $(B)/saturn-open-bios.bin
 $(B)/%.o: src/%.s | $(B)
 	$(AS) $(ASFLAGS) $(DEFS) -o $@ $<
 
-OBJS = $(addprefix $(B)/,boot.o init.o sys.o bup.o menu.o settings.o crash.o diag.o cd.o disc.o loadcd.o console.o ui.o font.o)
+OBJS = $(addprefix $(B)/,boot.o init.o sys.o bup.o menu.o settings.o crash.o diag.o cd.o disc.o loadcd.o console.o ui.o font.o version.o)
+
+# Version shown on screen: git describe (tag, commits since, -dirty), or
+# VERSION=... on the command line. version.s is only rewritten when it changes.
+VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo unknown)
+$(B)/version.s: FORCE | $(B)
+	@printf '        .section .rodata\n        .global version_str\nversion_str:    .asciz  "%s"\n        .align  2\n' '$(VERSION)' > $@.tmp
+	@cmp -s $@.tmp $@ && rm $@.tmp || mv $@.tmp $@
+$(B)/version.o: $(B)/version.s
+	$(AS) $(ASFLAGS) -o $@ $<
+FORCE:
+.PHONY: FORCE
 
 $(B)/saturn-open-bios.elf: $(OBJS) src/link.ld
 	$(LD) -EB -T src/link.ld -o $@ $(OBJS)

@@ -12,6 +12,7 @@
         .global ui_splash
         .global ui_step
         .global ui_status
+        .global ui_version_right
 
         .equ    BAR_ROW,    20
         .equ    BAR_COL,    6
@@ -73,6 +74,22 @@ ui_splash:
         mov.l   p_con_color, r0
         jsr     @r0
         mov     #25, r7
+        bsr     ver_len                 ! the version, centred on row 24
+        nop
+        mov     r0, r7                  ! (r3 and r7 survive con_puts)
+        mov     #40, r3
+        sub     r0, r3
+        shlr    r3
+        mov     r1, r4
+        mov     r3, r5
+        mov.l   p_con_puts, r0
+        jsr     @r0
+        mov     #24, r6
+        mov     #6, r4                  ! in the muted colour
+        mov     r3, r5
+        mov.l   p_con_color, r0
+        jsr     @r0
+        mov     #24, r6
         lds     r13, pr
         rts
         nop
@@ -122,7 +139,49 @@ status: mov.w   c_space, r4             ! clear the line
         rts
         nop
 
+! ver_len: r0 = length of the version string, r1 = its address. Leaf,
+! clobbers r2.
         .align  2
+ver_len:
+        mov.l   p_version, r1
+        mov     #-1, r0
+1:      mov.b   @r1+, r2
+        tst     r2, r2
+        bf/s    1b
+        add     #1, r0
+        mov.l   p_version, r1
+        rts
+        nop
+
+! ui_version_right: r6 = row. The version, right-aligned (ending in column
+! 38), in grey. Uses the stack.
+        .align  2
+ui_version_right:
+        sts.l   pr, @-r15
+        mov.l   r6, @-r15
+        bsr     ver_len
+        nop
+        mov     r0, r7
+        mov     #39, r3
+        sub     r0, r3
+        mov     r1, r4
+        mov     r3, r5
+        mov.l   @r15, r6
+        mov.l   p_con_puts, r0
+        jsr     @r0
+        nop
+        mov     #3, r4
+        mov     r3, r5
+        mov.l   @r15+, r6
+        mov.l   p_con_color, r0
+        jsr     @r0
+        nop
+        lds.l   @r15+, pr
+        rts
+        nop
+
+        .align  2
+p_version:      .long   version_str
 p_con_big:      .long   con_big
 p_con_puts:     .long   con_puts
 p_con_fill:     .long   con_fill
