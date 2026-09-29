@@ -236,17 +236,8 @@ menu_main:
         .endif
         mov.l   c_m_allbits, r0         ! ignore buttons already held
         mov.l   r0, @(V_PREV, r14)
-        mov.l   c_m_lib, r4             ! backup RAM library
-        mov.l   c_m_work2, r5
-        mov.l   c_m_conf, r6
-        mov.l   p_bup_init, r0
-        jsr     @r0
+        bsr     scan_devs
         nop
-        mov.l   c_m_conf, r1            ! cartridge: device 1 is unit 2
-        mov.w   @(4, r1), r0
-        cmp/eq  #2, r0
-        movt    r0
-        mov.l   r0, @(V_CART, r14)
         mov.l   p_vdp2_init_m, r0       ! fresh screen
         jsr     @r0
         nop
@@ -349,8 +340,18 @@ loop:
         bt      13f
         mov.l   @(V_CART, r14), r0
         tst     r0, r0
-        bt      loop
-        mov.l   @(V_DEV, r14), r0
+        bf      20f
+        bsr     scan_devs               ! none seen yet: look again (it may
+        nop                             ! have been plugged in since)
+        mov.l   @(V_CART, r14), r0
+        tst     r0, r0
+        bf      20f
+        mov.l   p_s_nocart, r4
+        bsr     message
+        nop
+        bra     loop
+        nop
+20:     mov.l   @(V_DEV, r14), r0
         xor     #1, r0
         mov.l   r0, @(V_DEV, r14)
         mov     #0, r0
@@ -375,15 +376,17 @@ loop:
         nop
         bra     loop
         nop
+22:     bra     loop
+        nop
 14:     mov.w   c_pad_c, r1             ! C: copy it to the other device
         tst     r1, r13
         bt      15f
         mov.l   @(V_COUNT, r14), r0
         tst     r0, r0
-        bt      loop
+        bt      22b
         mov.l   @(V_CART, r14), r0
         tst     r0, r0
-        bt      loop
+        bt      22b
         mov     #ACT_COPY, r0
         mov.l   r0, @(V_PEND, r14)
         mov.l   p_q_copy, r4
@@ -474,6 +477,26 @@ script:         .word   30, 0, 2, PAD_C, 10, 0, 2, PAD_A, 60, 0
         .endif
         .endif
 
+! scan_devs: (re)initialise the backup RAM library; V_CART = 1 if it found
+! a cartridge (device 1 is then unit 2).
+        .align  2
+scan_devs:
+        sts.l   pr, @-r15
+        mov.l   c_m_lib, r4
+        mov.l   c_m_work2, r5
+        mov.l   c_m_conf, r6
+        mov.l   p_bup_init, r0
+        jsr     @r0
+        nop
+        mov.l   c_m_conf, r1
+        mov.w   @(4, r1), r0
+        cmp/eq  #2, r0
+        movt    r0
+        mov.l   r0, @(V_CART, r14)
+        lds.l   @r15+, pr
+        rts
+        nop
+
 ! moved: keep the selection visible, redraw the list
 moved:
         mov.l   @(V_SEL, r14), r0
@@ -504,6 +527,7 @@ p_vdp2_init_m:  .long   vdp2_init
 p_vbl_wait:     .long   vbl_wait
 p_cd_status_m:  .long   cd_status
 p_s_nodisc:     .long   s_nodisc
+p_s_nocart:     .long   s_nocart
 p_con_puthex_m: .long   con_puthex
 c_m_padraw:     .long   M_PADRAW
 p_start:        .long   _start
@@ -921,6 +945,7 @@ s_q_copy:       .asciz  "COPY TO THE OTHER DEVICE?  A YES  B NO"
         .align  2
 s_q_format:     .asciz  "FORMAT, ERASING ALL SAVES?  A YES  B NO"
 s_nodisc:       .asciz  "NO DISC. INSERT ONE AND IT WILL BOOT"
+s_nocart:       .asciz  "NO BACKUP RAM CARTRIDGE FOUND"
         .align  2
 s_deleted:      .asciz  "DELETED"
         .align  2
