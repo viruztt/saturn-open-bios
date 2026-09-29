@@ -985,7 +985,10 @@ s_blank:        .asciz  "                                        "
 
         .ifdef  MENUSCRIPT              ! test scripts: (frames, buttons) pairs
         .align  2
-        .if     MENUSCRIPT == 5         ! settings: two languages on, back,
+        .if     MENUSCRIPT == 6         ! settings: Deutsch, back, boot
+script:         .word   30, 0, 2, PAD_X, 60, 0, 2, PAD_RIGHT, 60, 0
+                .word   2, PAD_B, 40, 0, 2, PAD_START, 10, 0, 0, 0
+        .elseif MENUSCRIPT == 5         ! settings: two languages on, back,
 script:         .word   30, 0, 2, PAD_X, 60, 0, 2, PAD_RIGHT, 40, 0 ! reopen
                 .word   2, PAD_RIGHT, 40, 0, 2, PAD_B, 40, 0, 2, PAD_X, 60, 0
                 .word   0, 0
