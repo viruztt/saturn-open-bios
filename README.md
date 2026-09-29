@@ -7,8 +7,8 @@ emulators and the MiSTer FPGA Saturn core. GPL-2.0-or-later.
 
 ## The story
 
-This is a little hobby project. I wanted to play all of my Saturn games on
-MiSTer without needing a real Sega BIOS, so I set out to build an open one
+I wanted to play all of my Saturn games on MiSTer without needing a real
+Sega BIOS, so I set out to build an open one
 that boots real discs, keeps saves working and plays CD music. It is not
 meant to replace the original for everyone, and it is certainly not
 finished, but it runs every game I own and have tried.
