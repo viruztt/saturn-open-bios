@@ -16,6 +16,7 @@
         .global ip_load
         .global first_read
         .global boot_game
+        .global cd_init_cart
         .global FR_ADDR
         .global FR_SIZE
         .global IP_AREA
@@ -323,3 +324,81 @@ c_root_lba:     .word   156 + 6         ! root directory record + extent (BE)
 
         .align  2
 sega_id:        .ascii  "SEGA SEGASATURN "
+
+! cd_init_cart: the "CD block init" boot step, then the bootable cartridge
+! check. A ROM in the A-bus CS0 area (0x02000000, e.g. an Action Replay
+! style cart or Pseudo Saturn Kai) whose first 16 bytes are the same
+! "SEGA SEGASATURN " hardware ID as a disc's IP.BIN is booted like one: its
+! IP (size from the header, IP_MIN..IP_MAX bytes) is copied to 0x06002000
+! and started through boot_game at 0x06002E00. Start pressed so far in the
+! boot (r14, collected by the step loop) skips the cartridge, so the backup
+! RAM manager and the disc stay reachable. Otherwise returns cd_init's
+! result.
+        .align  2
+cd_init_cart:
+        sts.l   pr, @-r15
+        mov.l   p_cd_init, r0
+        jsr     @r0
+        nop
+        tst     r0, r0                  ! CD block failed: report that
+        bf      9f
+        mov.w   c_start_btn, r1
+        tst     r1, r14
+        bf      8f
+        mov.l   c_cart, r1              ! hardware ID?
+        mov.l   p_sega_id_c, r2
+        mov     #16, r3
+1:      mov.b   @r1+, r0
+        mov.b   @r2+, r4
+        cmp/eq  r4, r0
+        bf      8f
+        dt      r3
+        bf      1b
+        mov.l   c_cart, r1
+        mov.w   c_e0, r0
+        mov.l   @(r0, r1), r7           ! IP size
+        mov.w   c_ip_min_c, r0
+        cmp/hs  r0, r7
+        bf      8f
+        mov.l   c_ip_max_c, r0
+        cmp/hi  r0, r7
+        bt      8f
+        add     #3, r7                  ! copy it (longwords)
+        shlr2   r7
+        mov.l   c_ip_buf_c, r2
+2:      mov.l   @r1+, r0
+        mov.l   r0, @r2
+        dt      r7
+        bf/s    2b
+        add     #4, r2
+        .ifdef  CARTSTOP                ! (test builds: report and stop)
+        mov.l   c_ip_buf_c, r4
+        mov.l   @(0x10, r4), r4         ! maker ID bytes as a check
+        mov     #2, r5
+        mov.l   p_puthex_c, r0
+        jsr     @r0
+        mov     #27, r6
+99:     bra     99b
+        nop
+        .align  2
+p_puthex_c:     .long   con_puthex
+        .endif
+        mov.l   p_boot_game_c, r0       ! does not return
+        jmp     @r0
+        nop
+8:      mov     #0, r0
+9:      lds.l   @r15+, pr
+        rts
+        nop
+
+        .align  2
+c_cart:         .long   0x22000000      ! A-bus CS0, cache-through
+p_cd_init:      .long   cd_init
+p_boot_game_c:  .long   boot_game
+c_ip_max_c:     .long   IP_MAX
+c_ip_buf_c:     .long   IP_BUF
+p_sega_id_c:    .long   sega_id
+c_start_btn:    .word   0x0800          ! PAD_START
+c_e0:           .word   0xE0
+c_ip_min_c:     .word   IP_MIN
+        .align  2

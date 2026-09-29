@@ -375,7 +375,7 @@ steps:
         .long   msg_scu,  scu_init
         .long   msg_scsp, scsp_init
         .long   msg_vdp1, vdp1_init
-        .long   msg_cdi,  cd_init
+        .long   msg_cdi,  cd_init_cart   ! (and a bootable cartridge)
         .long   msg_cda,  cd_auth
         .long   msg_cdt,  cd_toc
         .long   msg_cdr,  cd_read_ip

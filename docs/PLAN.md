@@ -340,6 +340,13 @@ Fixes found this way:
   it from the host). Stereo/mono is not offered: its SMEM bit is not
   publicly documented. The MiSTer core keeps SMEM only until the core is
   reloaded.
+- Cartridge boot: a ROM at 0x02000000 (A-bus CS0) starting with the
+  "SEGA SEGASATURN " hardware ID is booted like a disc IP.BIN (its IP,
+  size from +0xE0, copied to 0x06002000, run from 0x06002E00) right after
+  the CD block init. Start pressed earlier in the boot skips it. Pseudo
+  Saturn Kai Lite (PSKAI256.BIN) reaches its main menu in Yabause (Action
+  Replay cart type; Yabause's AR emulation does not start with the 1 MB
+  full version).
 - SetScuInterruptMask writes the SCU mask from the slave CPU too (Yabause
   only does it on the master).
 - The first read file is loaded whole; sizes above the CD buffer (200
