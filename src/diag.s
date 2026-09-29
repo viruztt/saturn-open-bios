@@ -89,6 +89,21 @@ diag_w_\service:
         DIAGWRAP 14, sc_change_scu_mask
         DIAGWRAP 15, bup_init
 
+! Calls without a counter slot: straight through.
+        .macro  DIAGPASS service
+        .global diag_w_\service
+        .align  2
+diag_w_\service:
+        mov.l   .Lf\@, r0
+        jmp     @r0
+        nop
+        .align  2
+.Lf\@:  .long   \service
+        .endm
+
+        DIAGPASS sc_loadcd_boot
+        DIAGPASS sc_loadcd_read
+
 ! diag_start_swdt: on the slave, from slave_start: the slave's own
 ! watchdog in interval mode at priority 15, vector 0x68 in the slave table
 ! at 0x06000400, sampling into DIAG_SLV (shown on the post-mortem page).

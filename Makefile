@@ -13,7 +13,7 @@ all: $(B)/saturn-open-bios.bin
 $(B)/%.o: src/%.s | $(B)
 	$(AS) $(ASFLAGS) $(DEFS) -o $@ $<
 
-OBJS = $(addprefix $(B)/,boot.o init.o sys.o bup.o menu.o settings.o crash.o diag.o cd.o disc.o console.o font.o)
+OBJS = $(addprefix $(B)/,boot.o init.o sys.o bup.o menu.o settings.o crash.o diag.o cd.o disc.o loadcd.o console.o font.o)
 
 $(B)/saturn-open-bios.elf: $(OBJS) src/link.ld
 	$(LD) -EB -T src/link.ld -o $@ $(OBJS)

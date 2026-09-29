@@ -203,6 +203,7 @@ tests:
         .long   n_date,   t_date
         .long   n_cart,   t_bupcart
         .long   n_ram,    t_ramcart
+        .long   n_loadcd, t_loadcd
         .long   0
 
         .align  2
@@ -241,6 +242,8 @@ n_date:         .asciz  "BUP SET/GET DATE"
 n_cart:         .asciz  "BUP CARTRIDGE"
         .align  2
 n_ram:          .asciz  "RAM CART ID"
+        .align  2
+n_loadcd:       .asciz  "LOAD CD INIT/READ/BOOT"
 
         .align  2
 ! ---- tests: return r0 = 0 on pass --------------------------------------
@@ -1026,6 +1029,50 @@ vdp2_regs:                              ! (register offset, value)
 ! RAM expansion cartridge: show the cartridge ID byte (0x24FFFFFF); for
 ! 0x5A (8 Mbit: two 512 KB halves at 0x22400000 and 0x22600000) or 0x5C
 ! (32 Mbit: 4 MB from 0x22400000) write a pattern to every 4 KB of the RAM,
+! t_loadcd: boot this disc again through the load CD system calls, as
+! boot loaders do (init 0x29C, read 0x2CC, boot 0x288). A marker in Low Work
+! RAM (not cleared by that path) tells the second run it came back that
+! way: then the test passes. A boot call that returns fails the test.
+        .align  2
+t_loadcd:
+        sts.l   pr, @-r15
+        mov.l   c_lc_flag, r1
+        mov.l   @r1, r0
+        mov.l   c_lc_magic, r2
+        cmp/eq  r2, r0
+        bf      1f
+        mov     #0, r0                  ! second run: it worked
+        mov.l   r0, @r1
+        bra     9f
+        nop
+1:      mov.l   r2, @r1                 ! first run: boot again
+        mov.l   c_lc_init, r0
+        mov.l   @r0, r0
+        jsr     @r0
+        nop
+        mov.l   c_lc_read, r0
+        mov.l   @r0, r0
+        jsr     @r0
+        nop
+        mov.l   c_lc_boot, r0
+        mov.l   @r0, r0
+        jsr     @r0
+        nop
+        mov.l   c_lc_flag, r1           ! came back: failed
+        mov     #0, r0
+        mov.l   r0, @r1
+        mov     #1, r0
+9:      lds.l   @r15+, pr
+        rts
+        nop
+
+        .align  2
+c_lc_flag:      .long   0x202FFFF0      ! Low Work RAM, cache-through
+c_lc_magic:     .long   0x4C434254      ! "LCBT"
+c_lc_init:      .long   0x0600029C
+c_lc_read:      .long   0x060002CC
+c_lc_boot:      .long   0x06000288
+
 ! then read it all back. Emulators may not provide the ID byte: then, if
 ! the first 512 KB hold a pattern, that much is tested ("?" after the ID).
 ! Returns 2 (NONE) without a RAM cartridge.

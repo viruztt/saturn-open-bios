@@ -333,7 +333,6 @@ sc_nop:
 sc_power_clear:
 sc_cd_player:
 sc_mpeg_check:
-sc_cd_init2:
 sc_cd_init1:
         rts
         mov     #0, r0
@@ -462,7 +461,9 @@ call_tab:
         CALL    SYS + 0x26C, sc_cd_player   ! execute CD player
         CALL    SYS + 0x274, sc_mpeg_check   ! check MPEG card
         CALL    SYS + 0x280, sc_change_prio   ! change SCU interrupt priority
-        CALL    SYS + 0x29C, sc_cd_init2   ! CD init 2
+        CALL    SYS + 0x288, sc_loadcd_boot   ! load CD: boot (loadcd.s)
+        CALL    SYS + 0x29C, sc_cd_init2   ! load CD: init (loadcd.s)
+        CALL    SYS + 0x2CC, sc_loadcd_read   ! load CD: read (loadcd.s)
         CALL    SYS + 0x2DC, sc_cd_init1   ! CD init 1
         CALL    SYS + 0x300, sc_set_scu_int   ! set SCU interrupt
         CALL    SYS + 0x304, sc_get_scu_int   ! get SCU interrupt
