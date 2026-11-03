@@ -88,6 +88,15 @@ run-image-diag: diag
 	BIOS=build/diag/saturn-open-bios.bin sh tools/run-yabause.sh "$(IMAGE)" build/image.png
 .PHONY: run-image run-image-diag
 
+# The same checks in Mednafen, which emulates the hardware more closely:
+# make run-mednafen, make run-image-mednafen IMAGE=/path/game.cue
+run-mednafen: build/saturn-open-bios.bin build/testdisc.iso
+	sh tools/run-mednafen.sh
+run-image-mednafen: build/saturn-open-bios.bin
+	test -n "$(IMAGE)"
+	sh tools/run-mednafen.sh "$(IMAGE)" build/image.png
+.PHONY: run-mednafen run-image-mednafen
+
 # Play a disc image in a normal Yabause window (WSLg on Windows):
 # make play IMAGE=/path/game.cue
 play: build/saturn-open-bios.bin

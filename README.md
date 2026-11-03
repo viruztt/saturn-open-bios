@@ -93,7 +93,8 @@ of the data track) instead of the CD music. This is not a BIOS issue.
 - **Details not yet checked against real hardware**: the backup RAM save
   format (only against emulators and games), clock changes skip the
   standby handshake of the real hardware, and first programs larger than
-  the CD block's buffer (200 sectors) have not been tried.
+  the CD block's buffer (200 sectors) have only been tried in Mednafen
+  (up to 328 sectors).
 - In Kronos some games stop earlier than on MiSTer (see the table); on
   MiSTer all tested games play.
 
@@ -129,6 +130,7 @@ OSD, or use "Save Backup RAM" while the game is loaded.
     sudo apt install binutils-sh-elf yabause xvfb x11-apps imagemagick
     make          # -> build/saturn-open-bios.bin (512 KB), the ROM image
     make run      # boots the test disc in Yabause headlessly, saves build/screen.png
+    make run-mednafen   # the same in Mednafen (apt install mednafen)
     make diag     # a build with diagnostics pages, in build/diag/
 
 The version shown on screen comes from `git describe`. Layout: `src/` SH-2

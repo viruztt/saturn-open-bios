@@ -277,12 +277,40 @@ Fixes found this way:
   with time-based limits; each sector's FAD is checked; DRDY and EHST are
   cleared before and awaited after each transfer.
 
+Mednafen 1.29 (Linux, headless, `-ss.cart auto`), 2026-11-03, with a
+contributor's own dumps (CHD converted to cue/bin). Screenshots at 15, 30,
+60 and 90 s, plus pad input where noted:
+
+| Title | Result |
+|---|---|
+| Burning Rangers (USA) | Intro movie |
+| Christmas NiGHTS into Dreams (USA) | Game's own Set Clock screen (same with Yabause's HLE BIOS); A continues to the intro. Writes a save; on the next boot reads it and skips the clock screen |
+| Daytona USA (USA) | Title and attract race loop; writes a save, boots again with it |
+| Grandia (JP) disc 1 / disc 2 | Intro and credits / the game's "insert disc 1" screen |
+| Guardian Heroes (USA) | Save device menu; Start reaches Player Select |
+| Metal Slug (JP) | Title and menu (1 MB RAM cart) |
+| NiGHTS into Dreams (USA) | Intro and title |
+| Panzer Dragoon Saga (USA) discs 1-4 | Disc 1 intro; discs 2-4 title |
+| Radiant Silvergun (JP) | Intro movie |
+| Sega Rally Championship (USA) | Attract race |
+| Shining Force III Scenarios 1-3 (JP) | Intros |
+| Virtua Fighter (USA) | Title and attract loop |
+| Virtua Fighter 2 (USA) | Title and attract fights (first read file 328 sectors) |
+| X-Men vs. Street Fighter (JP) | Title (4 MB RAM cart) |
+| The King of Fighters '95 (JP) | Not tried: needs the game's ROM cartridge dump |
+
+The same 20 discs in Yabause 0.9.15 (no cartridge) behave the same with
+this BIOS as with Yabause's HLE BIOS (`-nb`): Grandia and Shining Force III
+Scenario 1 stay black in both, Metal Slug and X-Men vs. Street Fighter show
+their "RAM cartridge missing" screen in both, the rest reach intros or
+attract mode.
+
 ## Test loop
 | Target | Custom BIOS accepted? | Notes |
 |---|---|---|
 | Yabause (`-b file`) | Yes | Current loop. Also has an HLE BIOS (`-nb`), useful as a behavioural reference. |
 | Kronos (libretro) | Yes | Main emulator reference; optional SH-2 cache emulation (`kronos_usecache`). |
-| Mednafen 1.29 | **No** | Rejects any `sega_101.bin`/`mpr-17933.bin` whose hash isn't Sega's. Needs a small patch or a new setting upstream. |
+| Mednafen 1.29 | Yes, under any name not used by Sega's files | Only files named like Sega's (`sega_101.bin`, `mpr-17933.bin`, ...) are hash-checked. `make run-mednafen` / `run-image-mednafen` (`tools/run-mednafen.sh`), headless. |
 | MiSTer Saturn core | Yes (`boot.rom` is user supplied) | Boots the tested games; models the SH-2 caches, CD block FIFO timing and bus contention that emulators skip. |
 | Real hardware | Later | 27C4096 EPROM swap. |
 
@@ -314,7 +342,7 @@ Fixes found this way:
 6. ~~System call table + interrupt handling~~ (needs checking against real SGL/SBL games)
 7. ~~Backup RAM library~~ (internal device; cartridge RAM later), SMPC peripheral helpers
 8. MiSTer + real-hardware testing; boot menu, CD player
-9. Mednafen: upstream a setting to allow a custom BIOS
+9. ~~Mednafen: boot with the custom BIOS~~ (no patch needed, see test loop)
 
 ## Known limits
 - The system area layout below 0x06002000 beyond the documented system
@@ -354,8 +382,9 @@ Fixes found this way:
   JHL loader uses the load CD calls. Decided with the owner 2026-09-29.
 - SetScuInterruptMask writes the SCU mask from the slave CPU too (Yabause
   only does it on the master).
-- The first read file is loaded whole; sizes above the CD buffer (200
-  sectors) are untested.
+- The first read file is loaded whole. Sizes above the CD buffer (200
+  sectors) boot in Mednafen (up to 328 sectors, Virtua Fighter 2); not yet
+  tried on MiSTer or real hardware.
 
 ## Post-BIOS state checklist
 What a game sees when the BIOS jumps to it, from Yabause's HLE BIOS
